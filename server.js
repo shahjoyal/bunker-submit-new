@@ -51,14 +51,17 @@ const CoalSchema = new mongoose.Schema({
   Mn3O4: Number,
   SulphurS: Number,
   gcv: Number,
-  cost: Number
-}, { collection: 'coals' }); // optional explicit collection name
+  cost: Number,
+  // color field so same coal shows same color across all bunkers
+  color: String
+}, { collection: 'coals' });
 
 const Coal = mongoose.model('Coal', CoalSchema);
 
-/* -------------------- Blend model (rows + computed fields) -------------------- */
+/* -------------------- Blend model (rows + computed fields + bunkers) -------------------- */
 const RowSchema = new mongoose.Schema({
-  coal: String,           // can be coal name or coal _id (string)
+  // coal: either a string (single coal) OR object mapping millIndex->coalRef (id or name)
+  coal: { type: mongoose.Schema.Types.Mixed },
   percentages: [Number],
   gcv: Number,
   cost: Number
@@ -68,6 +71,17 @@ const BlendSchema = new mongoose.Schema({
   rows: [RowSchema],
   flows: [Number],
   generation: Number,
+
+  // store independent bunker info (array length 6): each has layers
+  bunkers: [{
+    layers: [{
+      rowIndex: Number,
+      coal: String,
+      percent: Number,
+      gcv: Number,
+      cost: Number
+    }]
+  }],
 
   // computed fields
   totalFlow: { type: Number, default: 0 },
@@ -111,10 +125,11 @@ app.post('/api/upload-coal', upload.single('file'), async (req, res) => {
       Mn3O4: item['Mn3O4'] || item['MN3O4'] || 0,
       SulphurS: item['Sulphur'] || item['SulphurS'] || 0,
       gcv: item['GCV'] || item['gcv'] || 0,
-      cost: item['Cost'] || item['cost'] || 0
+      cost: item['Cost'] || item['cost'] || 0,
+      color: item['Color'] || item['color'] || item['colour'] || item['hex'] || ''
     }));
 
-    // Optional: remove existing coals and insert new set
+    // Replace existing coals with new upload (adjust if you prefer merge)
     await Coal.deleteMany();
     await Coal.insertMany(coalData);
 
@@ -194,12 +209,12 @@ function calcAFT(ox) {
   return Number(aft);
 }
 
-/* -------------------- compute blend metrics -------------------- */
+/* -------------------- compute blend metrics (per-mill aware) -------------------- */
 async function computeBlendMetrics(rows, flows, generation) {
-  // rows: array length 3 (expected), flows: array length 6
+  // rows: array (each row may have: coal (string or object), percentages[], gcv, cost)
   const oxKeys = ["SiO2","Al2O3","Fe2O3","CaO","MgO","Na2O","K2O","SO3","TiO2"];
 
-  // Load all coal docs once (small collection expected). For large DB you can fetch only needed ones.
+  // Load all coal docs once
   const allCoals = await Coal.find().lean();
   const byId = {};
   const byNameLower = {};
@@ -210,15 +225,21 @@ async function computeBlendMetrics(rows, flows, generation) {
 
   function findCoalRef(ref) {
     if (!ref) return null;
-    // try by id
     if (byId[String(ref)]) return byId[String(ref)];
-    // try by name (case-insensitive)
     const lower = String(ref).toLowerCase();
     if (byNameLower[lower]) return byNameLower[lower];
     return null;
   }
 
-  // compute blended GCV and oxides per mill
+  // helper to get per-mill coalRef from row (row.coal may be string or object)
+  function coalRefForRowAndMill(row, mill) {
+    if (!row) return null;
+    if (row.coal && typeof row.coal === 'object' && row.coal !== null) {
+      return row.coal[String(mill)] || '';
+    }
+    return row.coal || '';
+  }
+
   const blendedGCVPerMill = [];
   const aftPerMill = [];
 
@@ -232,13 +253,15 @@ async function computeBlendMetrics(rows, flows, generation) {
       const perc = (Array.isArray(row.percentages) && row.percentages[m]) ? Number(row.percentages[m]) : 0;
       const weight = perc / 100;
 
-      const coalDoc = findCoalRef(row.coal);
+      // resolve per-mill coalRef if supplied
+      const coalRef = coalRefForRowAndMill(row, m);
+      const coalDoc = findCoalRef(coalRef);
 
-      // gcv from row (explicit) preferred, else from coal doc
+      // gcv: prefer explicit row.gcv (global) else coalDoc.gcv
       const gcvVal = (row.gcv !== undefined && row.gcv !== null && row.gcv !== '') ? Number(row.gcv) : (coalDoc ? (Number(coalDoc.gcv) || 0) : 0);
       blendedGCV += gcvVal * weight;
 
-      // accumulate oxides from coalDoc if present, else from row properties (if provided)
+      // accumulate oxides from coalDoc if present (or from row(if provided))
       if (coalDoc) {
         oxKeys.forEach(k => {
           ox[k] += (Number(coalDoc[k]) || 0) * weight;
@@ -250,14 +273,13 @@ async function computeBlendMetrics(rows, flows, generation) {
           }
         });
       }
-    } // end rows loop
+    } // rows loop
 
     blendedGCVPerMill.push(Number(blendedGCV));
-
     const oxTotal = Object.values(ox).reduce((s, v) => s + (Number(v) || 0), 0);
     const aftVal = (oxTotal === 0) ? null : Number(calcAFT(ox));
     aftPerMill.push(aftVal);
-  }
+  } // mills loop
 
   // totals & weighted averages using flows
   let totalFlow = 0;
@@ -281,7 +303,7 @@ async function computeBlendMetrics(rows, flows, generation) {
   const avgAFT = contributedAFTFlow > 0 ? (weightedAFT / contributedAFTFlow) : null;
   const heatRate = (generation && generation > 0 && totalFlow > 0) ? ((totalFlow * avgGCV) / generation) : null;
 
-  // compute cost rate similar to client: cost weighted by sum of percentages per row
+  // compute cost rate (weighted by sum of percentages per row)
   function rowQtySum(row) {
     if (!row || !Array.isArray(row.percentages)) return 0;
     return row.percentages.reduce((s, v) => s + (Number(v) || 0), 0);
@@ -300,6 +322,27 @@ async function computeBlendMetrics(rows, flows, generation) {
   }
   const costRate = totalQty > 0 ? (totalCost / totalQty) : 0;
 
+  // Build per-bunker structure (independent storage)
+  const bunkers = [];
+  for (let m = 0; m < 6; m++) {
+    const layers = [];
+    for (let rIdx = 0; rIdx < (rows || []).length; rIdx++) {
+      const row = rows[rIdx];
+      const pct = (Array.isArray(row.percentages) && row.percentages[m]) ? Number(row.percentages[m]) : 0;
+      if (!pct || pct <= 0) continue;
+      const coalRef = coalRefForRowAndMill(row, m);
+      const coalDoc = findCoalRef(coalRef);
+      layers.push({
+        rowIndex: rIdx + 1,
+        coal: coalDoc ? coalDoc.coal : (coalRef || ''),
+        percent: Number(pct),
+        gcv: coalDoc ? (Number(coalDoc.gcv) || Number(row.gcv || 0)) : Number(row.gcv || 0),
+        cost: coalDoc ? (Number(coalDoc.cost) || Number(row.cost || 0)) : Number(row.cost || 0)
+      });
+    }
+    bunkers.push({ layers });
+  }
+
   return {
     totalFlow: Number(totalFlow),
     avgGCV: Number(avgGCV),
@@ -307,16 +350,16 @@ async function computeBlendMetrics(rows, flows, generation) {
     heatRate: (heatRate === null ? null : Number(heatRate)),
     costRate: Number(costRate),
     aftPerMill: aftPerMill.map(v => (v === null ? null : Number(v))),
-    blendedGCVPerMill: blendedGCVPerMill.map(v => Number(v))
+    blendedGCVPerMill: blendedGCVPerMill.map(v => Number(v)),
+    bunkers
   };
 }
 
 /* -------------------- Blend endpoints (create / update / latest) -------------------- */
 /**
  * Create a new Blend document; compute metrics server-side and store them.
- * Body: { rows: [...], flows: [...], generation: number }
+ * Body: { rows: [.], flows: [.], generation: number }
  */
-// ---------------------- POST /api/blend (create + save with coal NAMES) ----------------------
 app.post('/api/blend', async (req, res) => {
   try {
     const { rows, flows, generation } = req.body;
@@ -333,37 +376,46 @@ app.post('/api/blend', async (req, res) => {
       if (c.coal) byNameLower[String(c.coal).toLowerCase()] = c;
     });
 
-    // resolve each row.coal to the coal name (if it's an id or name)
-    const rowsToSave = (rows || []).map(row => {
+    // helper to resolve row.coal entries (handle string or object mapping -> resolved names if possible)
+    function resolveRowCoalField(row) {
+      if (!row) return row;
       const copy = Object.assign({}, row);
-      const ref = (row && row.coal) ? String(row.coal) : '';
-      let resolvedName = null;
-      if (ref) {
-        if (byId[ref]) resolvedName = byId[ref].coal;
-        else if (byNameLower[ref.toLowerCase()]) resolvedName = byNameLower[ref.toLowerCase()].coal;
-      }
-      copy.coal = resolvedName || copy.coal || ''; // store name if found, else leave as-is
-      // ensure percentages are numbers (optional but tidy)
-      if (Array.isArray(copy.percentages)) {
-        copy.percentages = copy.percentages.map(v => Number(v) || 0);
+      if (copy.coal && typeof copy.coal === 'object') {
+        const newMap = {};
+        Object.keys(copy.coal).forEach(k => {
+          const ref = copy.coal[k];
+          if (ref && byId[ref]) newMap[k] = byId[ref].coal;
+          else if (ref && byNameLower[String(ref).toLowerCase()]) newMap[k] = byNameLower[String(ref).toLowerCase()].coal;
+          else newMap[k] = ref || '';
+        });
+        copy.coal = newMap;
       } else {
-        copy.percentages = [0,0,0,0,0,0];
+        const ref = copy.coal ? String(copy.coal) : '';
+        if (ref) {
+          if (byId[ref]) copy.coal = byId[ref].coal;
+          else if (byNameLower[ref.toLowerCase()]) copy.coal = byNameLower[ref.toLowerCase()].coal;
+        }
       }
+      // sanitize percentages, gcv, cost
+      if (Array.isArray(copy.percentages)) copy.percentages = copy.percentages.map(v => Number(v) || 0);
+      else copy.percentages = [0,0,0,0,0,0];
       copy.gcv = (copy.gcv !== undefined && copy.gcv !== null) ? Number(copy.gcv) : 0;
       copy.cost = (copy.cost !== undefined && copy.cost !== null) ? Number(copy.cost) : 0;
       return copy;
-    });
+    }
 
-    // compute metrics server-side using the name-resolved rows
+    const rowsToSave = (rows || []).map(row => resolveRowCoalField(row));
+
+    // compute metrics including bunkers
     const metrics = await computeBlendMetrics(rowsToSave, flows, generation);
 
-    // create and save blend
+    // create and save blend - include bunkers from metrics
     const doc = new Blend(Object.assign({}, {
       rows: rowsToSave,
       flows,
-      generation
+      generation,
+      bunkers: metrics.bunkers || []
     }, metrics));
-
     await doc.save();
     return res.status(201).json({ message: 'Saved', id: doc._id });
   } catch (err) {
@@ -372,11 +424,9 @@ app.post('/api/blend', async (req, res) => {
   }
 });
 
-
 /**
  * Update existing Blend by ID; recompute metrics and save
  */
-// ---------------------- PUT /api/blend/:id (update + save with coal NAMES) ----------------------
 app.put('/api/blend/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -394,33 +444,39 @@ app.put('/api/blend/:id', async (req, res) => {
       if (c.coal) byNameLower[String(c.coal).toLowerCase()] = c;
     });
 
-    // resolve each row.coal to the coal name (if it's an id or name)
-    const rowsToSave = (rows || []).map(row => {
+    // same resolve function as POST
+    function resolveRowCoalField(row) {
+      if (!row) return row;
       const copy = Object.assign({}, row);
-      const ref = (row && row.coal) ? String(row.coal) : '';
-      let resolvedName = null;
-      if (ref) {
-        if (byId[ref]) resolvedName = byId[ref].coal;
-        else if (byNameLower[ref.toLowerCase()]) resolvedName = byNameLower[ref.toLowerCase()].coal;
-      }
-      copy.coal = resolvedName || copy.coal || '';
-      if (Array.isArray(copy.percentages)) {
-        copy.percentages = copy.percentages.map(v => Number(v) || 0);
+      if (copy.coal && typeof copy.coal === 'object') {
+        const newMap = {};
+        Object.keys(copy.coal).forEach(k => {
+          const ref = copy.coal[k];
+          if (ref && byId[ref]) newMap[k] = byId[ref].coal;
+          else if (ref && byNameLower[String(ref).toLowerCase()]) newMap[k] = byNameLower[String(ref).toLowerCase()].coal;
+          else newMap[k] = ref || '';
+        });
+        copy.coal = newMap;
       } else {
-        copy.percentages = [0,0,0,0,0,0];
+        const ref = copy.coal ? String(copy.coal) : '';
+        if (ref) {
+          if (byId[ref]) copy.coal = byId[ref].coal;
+          else if (byNameLower[ref.toLowerCase()]) copy.coal = byNameLower[ref.toLowerCase()].coal;
+        }
       }
+      if (Array.isArray(copy.percentages)) copy.percentages = copy.percentages.map(v => Number(v) || 0);
+      else copy.percentages = [0,0,0,0,0,0];
       copy.gcv = (copy.gcv !== undefined && copy.gcv !== null) ? Number(copy.gcv) : 0;
       copy.cost = (copy.cost !== undefined && copy.cost !== null) ? Number(copy.cost) : 0;
       return copy;
-    });
+    }
 
-    // compute metrics server-side using the name-resolved rows
+    const rowsToSave = (rows || []).map(row => resolveRowCoalField(row));
     const metrics = await computeBlendMetrics(rowsToSave, flows, generation);
 
-    // update the document (replace rows with name-resolved rows + metrics)
     const updated = await Blend.findByIdAndUpdate(
       id,
-      Object.assign({}, { rows: rowsToSave, flows, generation }, metrics),
+      Object.assign({}, { rows: rowsToSave, flows, generation, bunkers: metrics.bunkers || [] }, metrics),
       { new: true }
     );
 
@@ -432,7 +488,6 @@ app.put('/api/blend/:id', async (req, res) => {
     return res.status(500).json({ error: err.message || 'Server error' });
   }
 });
-
 
 /**
  * Return the latest Blend document (most recent createdAt)
