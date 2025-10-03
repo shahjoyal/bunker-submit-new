@@ -1,255 +1,214 @@
-/* input.js - backward-compatible version to avoid VS Code/ESLint red lines */
+/* input.js — supports per-cell coal selection (per-bunker per-layer) and backward-compatible server payload */
 var API_BASE = window.location.origin + '/api';
+var latestBlendId = null;
+window.COAL_DB = window.COAL_DB || [];
+window.NUM_COAL_ROWS = window.NUM_COAL_ROWS || 5; // keep synchronized with HTML
 
-var latestBlendId = null; // store latest blend ID
-window.COAL_DB = window.COAL_DB || []; // will hold coal records once fetched
+/* helpers */
+function _getEl(id){ return document.getElementById(id) || null; }
+function _getElVal(id){ var e=_getEl(id); return e ? (e.value||'') : ''; }
+function _parseFloatSafe(v){ var n=parseFloat(v); return isNaN(n)?0:n; }
 
-// small helpers to avoid optional chaining
-function _getEl(id) {
-  return document.getElementById(id) || null;
-}
-function _getElVal(id) {
-  var el = _getEl(id);
-  return el ? (el.value || '') : '';
-}
-function _parseFloatSafe(val) {
-  var n = parseFloat(val);
-  return isNaN(n) ? 0 : n;
-}
+/* --- per-cell storage helpers (create hidden inputs to store per-bunker selections) --- */
+function cellCoalInputId(row, mill){ return `coal_cell_r${row}_m${mill}`; }
+function cellGcvInputId(row, mill){ return `gcv_cell_r${row}_m${mill}`; }
+function cellCostInputId(row, mill){ return `cost_cell_r${row}_m${mill}`; }
 
-/* collect current form state (same as before) */
-function collectFormData() {
-  var rows = [];
-  for (var r = 1; r <= 3; r++) {
-    var coalEl = _getEl('coalName' + r);
-    var coalName = coalEl ? (coalEl.value || '') : '';
-    coalName = coalName.trim();
-
-    var percentages = [];
-    for (var m = 0; m < 6; m++) {
-      var selector = '.percentage-input[data-row="' + r + '"][data-mill="' + m + '"]';
-      var p = document.querySelector(selector);
-      var v = p ? (_parseFloatSafe(p.value) || 0) : 0;
-      percentages.push(v);
-    }
-
-    var gcv = _parseFloatSafe(_getElVal('gcvBox' + r));
-    var cost = _parseFloatSafe(_getElVal('costBox' + r));
-
-    rows.push({ coal: coalName, percentages: percentages, gcv: gcv, cost: cost });
+function ensureHiddenInput(id){
+  var el = document.getElementById(id);
+  if(!el){
+    el = document.createElement('input');
+    el.type = 'hidden';
+    el.id = id;
+    document.body.appendChild(el);
   }
-
-  var flows = [];
-  var flowEls = document.querySelectorAll('.flow-input');
-  for (var i = 0; i < flowEls.length; i++) {
-    flows.push(_parseFloatSafe(flowEls[i].value));
-  }
-
-  var generation = _parseFloatSafe(_getElVal('generation'));
-
-  return { rows: rows, flows: flows, generation: generation, ts: Date.now() };
+  return el;
 }
 
-/* fetch latest blend ID */
-async function fetchLatestBlendId() {
-  try {
-    var res = await fetch(API_BASE + '/blend/latest');
-    if (!res.ok) return null;
-    var data = await res.json();
-    return data._id || null;
-  } catch (err) {
-    // older JS needs catch parameter
-    return null;
-  }
-}
-
-/* save or update blend */
-async function saveToServer() {
-  var payload = collectFormData();
-
-  if (!latestBlendId) {
-    latestBlendId = await fetchLatestBlendId();
-  }
-
-  var url = latestBlendId ? (API_BASE + '/blend/' + latestBlendId) : (API_BASE + '/blend');
-  var method = latestBlendId ? 'PUT' : 'POST';
-
-  try {
-    var res = await fetch(url, {
-      method: method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (!res.ok) {
-      var err;
-      try { err = await res.json(); } catch (e) { err = { error: 'Unknown' }; }
-      alert('Failed to save: ' + (err.error || res.status));
-      return;
-    }
-
-    var data = await res.json();
-    latestBlendId = data.id || latestBlendId;
-    alert('Saved to database (id: ' + (latestBlendId || 'unknown') + ')');
-  } catch (err) {
-    console.error(err);
-    alert('Network error saving data: ' + (err && err.message ? err.message : String(err)));
-  }
-}
-
-/* hook save button */
-document.addEventListener('DOMContentLoaded', function () {
-  var btn = _getEl('saveBtn');
-  if (btn) {
-    btn.addEventListener('click', saveToServer);
+function setCellCoal(row, mill, coalId){
+  if(!row || typeof mill === 'undefined') return;
+  ensureHiddenInput(cellCoalInputId(row,mill)).value = coalId || '';
+  // also set hidden gcv/cost from DB if available
+  var coalObj = findCoalInDB(coalId);
+  if(coalObj){
+    ensureHiddenInput(cellGcvInputId(row,mill)).value = coalObj.gcv || '';
+    ensureHiddenInput(cellCostInputId(row,mill)).value = coalObj.cost || '';
   } else {
-    console.warn('No #saveBtn found. Add <button id="saveBtn">Submit</button> to use database save.');
+    // clear if no coalObj
+    ensureHiddenInput(cellGcvInputId(row,mill)).value = '';
+    ensureHiddenInput(cellCostInputId(row,mill)).value = '';
   }
-
-  // load coals & populate dropdowns
-  loadCoalListAndPopulate();
-});
-
-/* Try several endpoint paths (fallback) to fetch coal list */
-async function tryFetchCoalEndpoints() {
-  var endpoints = [
-    API_BASE + '/coal',
-    API_BASE + '/coals',
-    API_BASE + '/coal/list',
-    API_BASE + '/coalnames'
-  ];
-
-  for (var i = 0; i < endpoints.length; i++) {
-    var ep = endpoints[i];
-    try {
-      var res = await fetch(ep);
-      if (!res.ok) continue;
-      var data = await res.json();
-
-      // normalize response to an array of items
-      var arr = [];
-      if (Array.isArray(data)) arr = data;
-      else if (Array.isArray(data.coals)) arr = data.coals;
-      else if (Array.isArray(data.result)) arr = data.result;
-      else if (Array.isArray(data.data)) arr = data.data;
-      else if (typeof data === 'object' && Object.keys(data).length > 0) {
-        var nested = data.docs || data.items || data.list || data.rows;
-        if (Array.isArray(nested)) arr = nested;
-        else arr = [data];
-      }
-
-      if (arr.length > 0) return arr;
-    } catch (err) {
-      // try next endpoint
-      continue;
-    }
-  }
-  return [];
 }
 
-/* loadCoalListAndPopulate - normalizes fields & populates selects */
-async function loadCoalListAndPopulate() {
-  var loader = _getEl('loader');
-  if (loader) loader.style.display = 'block';
-
-  var coals = await tryFetchCoalEndpoints();
-
-  if (!coals || coals.length === 0) {
-    if (loader) loader.style.display = 'none';
-    console.warn('No coal list found from API endpoints. If your server has a different route, update input.js endpoints.');
-    return;
-  }
-
-  // normalize fields & store
-  window.COAL_DB = coals.map(function (c) {
-    // safe id as string
-    var safeId = String(c._id || c.id || c.coal || Math.random().toString(36).slice(2));
-    // handle possible unicode property names using bracket notation
-    var si = (c.SiO2 !== undefined) ? Number(c.SiO2) : ((c['SiO₂'] !== undefined) ? Number(c['SiO₂']) : 0);
-    var al = (c.Al2O3 !== undefined) ? Number(c.Al2O3) : ((c['Al₂O₃'] !== undefined) ? Number(c['Al₂O₃']) : 0);
-    return {
-      _id: safeId,
-      coal: c.coal || c.Coal || c.name || '',
-      SiO2: si,
-      Al2O3: al,
-      Fe2O3: Number(c.Fe2O3 || c['Fe₂O₃'] || 0),
-      CaO: Number(c.CaO || 0),
-      MgO: Number(c.MgO || 0),
-      Na2O: Number(c.Na2O || 0),
-      K2O: Number(c.K2O || 0),
-      TiO2: Number(c.TiO2 || 0),
-      SO3: Number(c.SO3 || 0),
-      gcv: Number(c.gcv || c.GCV || 0),
-      cost: Number(c.cost || c.Cost || 0),
-      raw: c
-    };
-  });
-
-  // fill the 3 selects
-  for (var r = 1; r <= 3; r++) {
-    var sel = _getEl('coalName' + r);
-    if (!sel) continue;
-    // clear existing options except first
-    sel.innerHTML = '<option value="">Select coal</option>';
-    for (var j = 0; j < window.COAL_DB.length; j++) {
-      var c = window.COAL_DB[j];
-      var opt = document.createElement('option');
-      opt.value = c._id;
-      opt.textContent = c.coal || ('Coal ' + c._id);
-      sel.appendChild(opt);
-    }
-
-    // when user changes selection, populate gcv & cost and recalc
-    (function (rowIndex, selElem) {
-      selElem.addEventListener('change', function (e) {
-        var chosenId = e.target.value;
-        var coalObj = null;
-        for (var k = 0; k < window.COAL_DB.length; k++) {
-          if (String(window.COAL_DB[k]._id) === String(chosenId)) {
-            coalObj = window.COAL_DB[k];
-            break;
-          }
-        }
-        if (coalObj) {
-          var gcvEl = _getEl('gcvBox' + rowIndex);
-          var costEl = _getEl('costBox' + rowIndex);
-
-          if (gcvEl && (gcvEl.value === "" || gcvEl.value === undefined)) {
-            gcvEl.value = (coalObj.gcv !== undefined) ? coalObj.gcv : '';
-          } else {
-            if (gcvEl && (gcvEl.value === "")) gcvEl.value = coalObj.gcv;
-          }
-          if (costEl && (costEl.value === "" || costEl.value === undefined)) {
-            costEl.value = (coalObj.cost !== undefined) ? coalObj.cost : '';
-          } else {
-            if (costEl && (costEl.value === "")) costEl.value = coalObj.cost;
-          }
-        }
-        try { if (window.calculateBlended) window.calculateBlended(); } catch (e) { /* ignore */ }
-      });
-    })(r, sel);
-  }
-
-  if (loader) loader.style.display = 'none';
-  try {
-    if (window.calculateBlended) window.calculateBlended();
-    if (window.validateMillPercentages) window.validateMillPercentages();
-    if (window.updateBunkerColors) window.updateBunkerColors();
-  } catch (e) { console.warn(e); }
+function getCellCoalId(row, mill){
+  var hid = document.getElementById(cellCoalInputId(row,mill));
+  if(hid && hid.value) return hid.value;
+  // fallback to global row select (backwards compat)
+  var g = document.getElementById('coalName' + row);
+  if(g && g.value) return g.value;
+  return '';
 }
 
-/* optional helper: get coal by id or name */
-function getCoalByIdOrName(value) {
-  if (!value) return null;
+function getCellGcv(row, mill){
+  var hid = document.getElementById(cellGcvInputId(row,mill));
+  if(hid && hid.value) return _parseFloatSafe(hid.value);
+  // fallback to global gcv input
+  var ge = _getEl('gcvBox' + row);
+  if(ge && ge.value.trim()!=='') return _parseFloatSafe(ge.value);
+  // fallback to DB if coal selected
+  var id = getCellCoalId(row,mill);
+  var co = findCoalInDB(id);
+  return co ? (_parseFloatSafe(co.gcv) || 0) : 0;
+}
+
+function getCellCost(row, mill){
+  var hid = document.getElementById(cellCostInputId(row,mill));
+  if(hid && hid.value) return _parseFloatSafe(hid.value);
+  var ce = _getEl('costBox' + row);
+  if(ce && ce.value.trim()!=='') return _parseFloatSafe(ce.value);
+  var id = getCellCoalId(row,mill);
+  var co = findCoalInDB(id);
+  return co ? (_parseFloatSafe(co.cost) || 0) : 0;
+}
+
+function findCoalInDB(idOrName){
+  if(!idOrName) return null;
   var db = window.COAL_DB || [];
-  for (var i = 0; i < db.length; i++) {
-    if (String(db[i]._id) === String(value)) return db[i];
+  for(var i=0;i<db.length;i++){
+    if(String(db[i]._id) === String(idOrName) || String(db[i].id) === String(idOrName)) return db[i];
   }
-  for (var j = 0; j < db.length; j++) {
-    if (String((db[j].coal || '').toLowerCase()) === String(value).toLowerCase()) return db[j];
+  for(var j=0;j<db.length;j++){
+    if(String((db[j].coal||'')).toLowerCase() === String(idOrName).toLowerCase()) return db[j];
   }
   return null;
 }
 
-// export/save functions used elsewhere if needed
-window.getCoalByIdOrName = getCoalByIdOrName;
+/* --- data collection: builds rows[], flows[], generation --- 
+     rows[].coal: if all mills for that row share same coal id -> store string
+                   else store object { "0": "id0", "1": "id1", . } (mill index keys)
+*/
+function collectFormData(){
+  var rows = [];
+  var N = window.NUM_COAL_ROWS || 5;
+  for(var r=1;r<=N;r++){
+    var coalGlobal = _getEl('coalName' + r) ? _getEl('coalName' + r).value : '';
+    // build per-mill mapping if any per-cell present
+    var perCellMap = {};
+    var anyPerCell = false;
+    for(var m=0;m<6;m++){
+      var cid = getCellCoalId(r,m) || '';
+      if(cid && cid !== coalGlobal){
+        anyPerCell = true;
+      }
+      if(cid) perCellMap[String(m)] = cid;
+    }
+    var coalField = anyPerCell ? perCellMap : (coalGlobal || '');
+    // collect percentages for this row (length 6)
+    var percentages = [];
+    for(var mm=0; mm<6; mm++){
+      var p = document.querySelector(`.percentage-input[data-row="${r}"][data-mill="${mm}"]`);
+      percentages.push(p ? _parseFloatSafe(p.value) : 0);
+    }
+    // gcv/cost - pick global if present else undefined (server will resolve)
+    var gcv = _parseFloatSafe(_getElVal('gcvBox'+r));
+    var cost = _parseFloatSafe(_getElVal('costBox'+r));
+    rows.push({ coal: coalField, percentages: percentages, gcv: gcv, cost: cost });
+  }
+
+  var flows = [];
+  var flowEls = document.querySelectorAll('.flow-input');
+  for(var i=0;i<flowEls.length;i++) flows.push(_parseFloatSafe(flowEls[i].value));
+  var generation = _parseFloatSafe(_getElVal('generation'));
+  return { rows: rows, flows: flows, generation: generation, ts: Date.now() };
+}
+
+/* fetch latest blend id and save/put (same as before) */
+async function fetchLatestBlendId(){
+  try{
+    var res = await fetch(API_BASE + '/blend/latest');
+    if(!res.ok) return null;
+    var data = await res.json();
+    return data._id || null;
+  }catch(e){ return null; }
+}
+
+async function saveToServer(){
+  try{
+    console.log('[saveToServer] collecting payload.');
+    var payload = collectFormData();
+    console.log('[saveToServer] payload', payload);
+    if(!latestBlendId) latestBlendId = await fetchLatestBlendId();
+    var url = latestBlendId ? (API_BASE + '/blend/' + latestBlendId) : (API_BASE + '/blend');
+    var method = latestBlendId ? 'PUT' : 'POST';
+    var res = await fetch(url, {
+      method: method,
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if(!res.ok){
+      var err;
+      try{ err = await res.json(); }catch(e){ err = {error:'Unknown'} }
+      alert('Failed to save: ' + (err.error || res.status));
+      return;
+    }
+    var data = await res.json();
+    latestBlendId = data.id || latestBlendId;
+    alert('Saved (id: ' + (latestBlendId || 'unknown') + ')');
+  }catch(e){ console.error(e); alert('Network/save error: ' + (e && e.message ? e.message : e)); }
+}
+
+/* --- load coal list and populate row global selects + popup --- */
+async function tryFetchCoalEndpoints(){
+  var endpoints = [API_BASE + '/coal', API_BASE + '/coals', API_BASE + '/coal/list', API_BASE + '/coalnames'];
+  for(var i=0;i<endpoints.length;i++){
+    try{
+      var res = await fetch(endpoints[i]);
+      if(!res.ok) continue;
+      var data = await res.json();
+      if(Array.isArray(data)) return data;
+      if(Array.isArray(data.coals)) return data.coals;
+      if(Array.isArray(data.data)) return data.data;
+      if(Array.isArray(data.items)) return data.items;
+      if(typeof data === 'object' && data !== null){
+        var nested = data.docs || data.rows || data.list;
+        if(Array.isArray(nested)) return nested;
+      }
+    }catch(e){ continue; }
+  }
+  return [];
+}
+
+async function loadCoalListAndPopulate(){
+  var coals = await tryFetchCoalEndpoints();
+  if(!coals || coals.length === 0){ console.warn('No coals fetched'); window.COAL_DB = []; return; }
+  window.COAL_DB = coals;
+
+  // populate global row selects (if present)
+  for(var r=1;r<= (window.NUM_COAL_ROWS || 5); r++){
+    var sel = document.getElementById('coalName' + r);
+    if(!sel) continue;
+    // clear existing
+    sel.innerHTML = '<option value="">--select--</option>';
+    coals.forEach(c => {
+      var opt = document.createElement('option');
+      opt.value = c._id || c.id || c.coal || '';
+      opt.textContent = c.coal || (c.name || 'Unnamed');
+      sel.appendChild(opt);
+    });
+  }
+  // initial UI updates (colors/tooltips etc)
+  if(typeof updateBunkerColors === 'function') updateBunkerColors();
+  if(typeof calculateBlended === 'function') calculateBlended();
+}
+
+/* wire up onload */
+window.addEventListener('load', function(){
+  loadCoalListAndPopulate().catch(e => console.error('[coal-helper] populate error', e));
+  // small delayed init to ensure main calculations are present
+  setTimeout(()=>{ if(typeof calculateBlended === 'function') calculateBlended(); if(typeof updateBunkerColors === 'function') updateBunkerColors(); }, 300);
+});
+
+/* --- helper: when user picks a coal per cell (mill) call setCellCoal(row,mill,coalId) --- */
+/* Example: in your UI when user picks coal for bunker 2 (mill=1) for row 3 call setCellCoal(3,1,'<coal-id>') */
+
+/* (other UI helpers such as updateBunkerColors / calculateBlended / tooltip code live in input.html and still work with this input.js) */
