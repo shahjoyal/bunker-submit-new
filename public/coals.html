@@ -251,7 +251,7 @@
   }
 
   function normalize(arr){
-    return arr.map((x) => {
+    const mapped = arr.map((x) => {
       const out = {};
       for(const k in x){
         out[k] = unwrap(x[k]);
@@ -261,7 +261,19 @@
       if(out.cost !== undefined && out.cost !== null) out.cost = Number(out.cost) || out.cost;
       return out;
     });
+
+    // Sort alphabetically (case-insensitive) by coal name
+    mapped.sort((a, b) => {
+      const A = (a.coal || '').toString().trim().toLowerCase();
+      const B = (b.coal || '').toString().trim().toLowerCase();
+      if (A < B) return -1;
+      if (A > B) return 1;
+      return 0;
+    });
+
+    return mapped;
   }
+
 
   async function tryLoad(){
     $status.textContent = 'Loading...';
