@@ -563,6 +563,8 @@
   /* responsive tweak for overlay size if needed */
   @media (max-width:700px){ .add-coal-overlay{ width:40px; height:40px; font-size:20px;} }
   @media (max-width:480px){ .add-coal-overlay{ width:36px; height:36px; font-size:18px;} }
+
+  
 </style>
 
 <script>
@@ -1039,10 +1041,10 @@
         <label for="popupCoal">Coal</label>
         <select id="popupCoal"><option value="">Loading…</option></select>
       </div>
-      <div class="popup-row">
-        <label for="popupPercent">Percent</label>
-        <input id="popupPercent" type="number" min="0" max="100" placeholder="%" />
-      </div>
+<div class="popup-row">
+  <label for="popupPercent">Tonnage (tons)</label>
+  <input id="popupPercent" type="number" min="0" step="any" placeholder="Enter tons (e.g. 300)" />
+</div>
 <div class="popup-row" style="margin-top:6px;">
   <label>Note</label>
   <div style="font-size:13px;color:#666">You can add up to 5 layers per bunker (bottom → middle → top → ...). This action fills the first available layer.</div>
@@ -1544,12 +1546,21 @@ function getNumRows(){
 
 function buildOptionsFromDB(db){
   if(!db || !Array.isArray(db)) return '<option value="">No data</option>';
-  return ['<option value="">Select coal</option>'].concat(db.map(c=>{
+  // sort by 'coal' or 'name' (case-insensitive)
+  const sorted = db.slice().sort((a,b) => {
+    const aa = String(a.coal || a.name || '').trim().toLowerCase();
+    const bb = String(b.coal || b.name || '').trim().toLowerCase();
+    if(aa < bb) return -1;
+    if(aa > bb) return 1;
+    return 0;
+  });
+  return ['<option value="">Select coal</option>'].concat(sorted.map(c=>{
     const id = c._id || c.id || c._key || c.coal || c.name;
     const label = c.coal || c.name || String(id || '');
     return `<option value="${String(id)}">${String(label)}</option>`;
   })).join('');
 }
+
 
 async function ensureCoalDB(timeout = 3000) {
   const start = Date.now();
@@ -1675,12 +1686,26 @@ function saveCoalSelection() {
   try {
     const bunkerIndex = Number(document.getElementById('popupBunkerIndex').value);
     const coalId = document.getElementById('popupCoal').value;
-    const percentRaw = document.getElementById('popupPercent').value;
-    const percent = Number(percentRaw);
+    const tonnesRaw = document.getElementById('popupPercent').value;
+    const tonnes = Number(tonnesRaw);
     const N = getNumRows();
 
     if (!coalId) { alert('Please select a coal'); return; }
-    if (!isFinite(percent) || percent <= 0) { alert('Please enter a valid percentage greater than 0'); return; }
+    if (!isFinite(tonnes) || tonnes <= 0) { alert('Please enter a valid tonnage greater than 0'); return; }
+
+    const bunkerCapacity = parseFloat(document.getElementById('bunkerCapacity')?.value) || 0;
+    if (!isFinite(bunkerCapacity) || bunkerCapacity <= 0) { alert('Please enter the bunker capacity first'); return; }
+
+    // Convert tonnes -> percent (2 decimals)
+    let percent = (tonnes / bunkerCapacity) * 100;
+    percent = Math.round(percent * 100) / 100; // 2 decimals
+
+    if (percent <= 0) { alert('Entered tonnage yields 0% — enter a larger tonnage'); return; }
+    if (percent > 100) {
+      // warn and cap at 100% — you can change this behavior if you prefer
+      if(!confirm(`Entered tonnage (${tonnes}) is greater than bunker capacity (${bunkerCapacity}). This will be capped to 100%. Proceed?`)) return;
+      percent = 100;
+    }
 
     const row = findFirstAvailableRowForBunker(bunkerIndex);
     if (!row) { alert(`All ${N} layers for this bunker are already used. Clear one before adding.`); return; }
@@ -1699,11 +1724,9 @@ function saveCoalSelection() {
     }
 
     // Store selection per-cell (row, bunkerIndex)
-    // Prefer using global helper setCellCoal (exists in /public/input.js). If not present, create hidden inputs manually.
     if (typeof setCellCoal === 'function') {
       setCellCoal(row, bunkerIndex, coalId);
     } else {
-      // fallback: create hidden inputs with the same ids your other code expects
       function ensureHiddenInputLocal(id) {
         var el = document.getElementById(id);
         if (!el) {
@@ -1732,7 +1755,7 @@ function saveCoalSelection() {
       if (costEl && (!costEl.value || String(costEl.value).trim() === '')) costEl.value = coalObj.cost || '';
     }
 
-    // set percentage in the found row for the bunker
+    // set percentage in the found row for the bunker (this is where tonnes → percent is finally written)
     const pctInput = document.querySelector(`.percentage-input[data-row="${row}"][data-mill="${bunkerIndex}"]`);
     if (pctInput) {
       // validate sum for bunker
@@ -1740,28 +1763,32 @@ function saveCoalSelection() {
       for (let r = 1; r <= N; r++) {
         sum += parseFloat(document.querySelector(`.percentage-input[data-row="${r}"][data-mill="${bunkerIndex}"]`)?.value) || 0;
       }
-      if (sum + percent > 100) {
-        alert(`Adding ${percent}% would exceed 100% for this bunker. Current sum is ${sum}%.`);
-        // cleanup: remove per-cell value we set
-        if (typeof setCellCoal === 'function') setCellCoal(row, bunkerIndex, '');
-        else document.getElementById(`coal_cell_r${row}_m${bunkerIndex}`).value = '';
+
+      // If adding this percent would exceed 100%, block (allow exact 100)
+      if (sum + percent > 100.0001) {
+        alert('Adding this tonnage would exceed 100% for this bunker. Adjust the tonnage or clear a layer first.');
         return;
       }
+
       pctInput.value = String(percent);
+      // fire input so other listeners update
       pctInput.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
-    // recalc & UI updates
+    // call existing update functions (same as original)
     if (typeof calculateBlended === 'function') calculateBlended();
     if (typeof validateMillPercentages === 'function') validateMillPercentages();
     if (typeof updateBunkerColors === 'function') updateBunkerColors();
 
-    closeCoalPopup();
+    const more = findLastFilledRowForBunker(bunkerIndex);
+    document.getElementById('clearLastBtn').style.display = more ? 'inline-block' : 'none';
+    if (!more) closeCoalPopup();
   } catch (e) {
     console.error('[coal-helper] saveCoalSelection error', e);
-    alert('Error saving selection — see console.');
+    alert('Error saving layer — see console.');
   }
 }
+
 
 /* Clear the last (topmost) added layer for a bunker (fixed to clear per-cell hidden inputs) */
 function clearLastLayer() {
@@ -2273,84 +2300,103 @@ window.savePayload = savePayload;
   }
 
   // tooltip behavior for rects
-  function attachToRects(){
-    const rects = document.querySelectorAll('.bunker svg rect');
-    rects.forEach(rect=>{
-      if(rect.__tooltipHooked) return;
-      rect.__tooltipHooked = true;
-      rect.addEventListener('mouseenter', function(ev){
-        try{
-          const row = Number(this.getAttribute('data-row') || this.dataset.row || 0) || 0;
-          const mill = Number(this.getAttribute('data-mill') || this.dataset.mill || 0) || 0;
-          // coal name resolution: prefer per-cell hidden id, else try COAL_DB using id, else use row select label (if not placeholder)
-          let coalId = getPerCellCoalId(row,mill);
-          let name = '';
-          let gcv = getPerCellGcv(row,mill);
-          let cost = getPerCellCost(row,mill);
+function attachToRects(){
+  const rects = document.querySelectorAll('.bunker svg rect');
+  rects.forEach(rect=>{
+    if(rect.__tooltipHooked) return;
+    rect.__tooltipHooked = true;
+    rect.addEventListener('mouseenter', function(ev){
+      try{
+        const row = Number(this.getAttribute('data-row') || this.dataset.row || 0) || 0;
+        const mill = Number(this.getAttribute('data-mill') || this.dataset.mill || 0) || 0;
 
-          if(coalId){
-            const obj = findCoalObj(coalId);
-            if(obj) {
-              name = obj.coal || obj.name || String(coalId);
-              if(!gcv) gcv = obj.gcv || obj.GCV || '';
-              if(!cost) cost = obj.cost || obj.Cost || '';
-            } else {
-              name = String(coalId);
-            }
+        // coal name resolution: prefer per-cell hidden id, else try COAL_DB using id, else use row select label
+        let coalId = getPerCellCoalId(row,mill);
+        let name = '';
+        let gcv = getPerCellGcv(row,mill);
+        let cost = getPerCellCost(row,mill);
+        let aftText = '--';
+
+        let coalObj = null;
+        if(coalId){
+          coalObj = findCoalObj(coalId);
+          if(coalObj) {
+            name = coalObj.coal || coalObj.name || String(coalId);
+            if(!gcv) gcv = coalObj.gcv || coalObj.GCV || '';
+            if(!cost) cost = coalObj.cost || coalObj.Cost || '';
           } else {
-            // fallback to row-level select but prefer DB lookup if possible
-            name = fallbackRowSelectCoal(row) || '';
-            if(!gcv){
-              // try row-level gcvBox
-              const gb = document.getElementById(`gcvBox${row}`);
-              if(gb && gb.value && gb.value.trim()!=='') gcv = gb.value;
-            }
-            if(!cost){
-              const cb = document.getElementById(`costBox${row}`);
-              if(cb && cb.value && cb.value.trim()!=='') cost = cb.value;
-            }
-            // if name still empty but select has value that looks like id, try lookup
-            if(!name){
-              const sel = document.getElementById(`coalName${row}`);
-              if(sel && sel.value){
-                const o = findCoalObj(sel.value);
-                if(o) {
-                  name = o.coal || o.name || sel.value;
-                  if(!gcv) gcv = o.gcv || o.GCV || '';
-                  if(!cost) cost = o.cost || o.Cost || '';
-                } else {
-                  // show the select text but avoid 'Select coal' placeholder
-                  const label = (sel.selectedOptions && sel.selectedOptions[0] && sel.selectedOptions[0].text) || '';
-                  if(label && label.trim().toLowerCase() !== 'select coal') name = label;
-                }
+            name = String(coalId);
+          }
+        } else {
+          // fallback to row-level select but prefer DB lookup if possible
+          name = fallbackRowSelectCoal(row) || '';
+          if(!gcv){
+            const gb = document.getElementById(`gcvBox${row}`);
+            if(gb && gb.value && gb.value.trim()!=='') gcv = gb.value;
+          }
+          if(!cost){
+            const cb = document.getElementById(`costBox${row}`);
+            if(cb && cb.value && cb.value.trim()!=='') cost = cb.value;
+          }
+          // if name still empty but select has value that looks like id, try lookup
+          if(!name){
+            const sel = document.getElementById(`coalName${row}`);
+            if(sel && sel.value){
+              const o = findCoalObj(sel.value);
+              if(o) {
+                coalObj = o;
+                name = o.coal || o.name || sel.value;
+                if(!gcv) gcv = o.gcv || o.GCV || '';
+                if(!cost) cost = o.cost || o.Cost || '';
+              } else {
+                const label = (sel.selectedOptions && sel.selectedOptions[0] && sel.selectedOptions[0].text) || '';
+                if(label && label.trim().toLowerCase() !== 'select coal') name = label;
               }
             }
           }
+        }
 
-          // compute AFT: prefer displayed aft cell if valid, else compute
-          let aftText = (document.querySelector(`.aft[data-mill="${mill}"]`)?.textContent || '').trim();
-          if(!aftText || aftText === '--') {
-            aftText = computeBunkerAft(mill);
+        // --- Compute per-coal AFT if we have the coal object ---
+        if(!coalObj && coalId) coalObj = findCoalObj(coalId);
+        if(coalObj){
+          const oxKeys = ["SiO2","Al2O3","Fe2O3","CaO","MgO","Na2O","K2O","SO3","TiO2"];
+          const ox = {};
+          oxKeys.forEach(k => {
+            const v = coalObj[k] !== undefined ? (parseFloat(coalObj[k]) || 0) : 0;
+            ox[k] = v;
+          });
+          try {
+            if(typeof calcAFT === 'function'){
+              const v = calcAFT(ox);
+              aftText = isFinite(v) ? Number(v).toFixed(2) : '--';
+            }
+          } catch(e){
+            aftText = '--';
           }
+        } else {
+          // fallback: if per-coal data not available, try to compute blended AFT for the bunker
+          const bunkerAft = computeBunkerAft ? computeBunkerAft(mill) : (document.querySelector(`.aft[data-mill="${mill}"]`)?.textContent || '--');
+          aftText = (bunkerAft === '--' || bunkerAft === undefined) ? '--' : (isFinite(Number(bunkerAft)) ? Number(bunkerAft).toFixed(2) : bunkerAft);
+        }
 
-          tip.innerHTML = buildHtml({ name: name || 'No coal selected', gcv: gcv || '', cost: cost || '', aft: aftText });
-          tip.style.display = 'block';
-          tip.setAttribute('aria-hidden','false');
-          // initial position
-          tip.style.left = (ev.pageX + 12) + 'px';
-          tip.style.top  = (ev.pageY + 12) + 'px';
-        }catch(err){ console.error('tooltip enter error', err); }
-      });
-      rect.addEventListener('mousemove', function(ev){
+        tip.innerHTML = buildHtml({ name: name || 'No coal selected', gcv: gcv || '', cost: cost || '', aft: aftText });
+        tip.style.display = 'block';
+        tip.setAttribute('aria-hidden','false');
         tip.style.left = (ev.pageX + 12) + 'px';
         tip.style.top  = (ev.pageY + 12) + 'px';
-      });
-      rect.addEventListener('mouseleave', function(){
-        tip.style.display = 'none';
-        tip.setAttribute('aria-hidden','true');
-      });
+      }catch(err){ console.error('tooltip enter error', err); }
     });
-  }
+    rect.addEventListener('mousemove', function(ev){
+      tip.style.left = (ev.pageX + 12) + 'px';
+      tip.style.top  = (ev.pageY + 12) + 'px';
+    });
+    rect.addEventListener('mouseleave', function(){
+      tip.style.display = 'none';
+      tip.setAttribute('aria-hidden','true');
+    });
+  });
+}
+
 
   // initial attach + observe DOM for new rects
   attachToRects();
