@@ -3,47 +3,58 @@
 <head>
   <meta charset="UTF-8" />
   <title>Coal Blending Ratio — modified</title>
- <style>
-  /* ------------------------------
-     Core variables + base reset
-     ------------------------------ */
+<style>
+  /* =========================
+     Core variables & base reset
+     ========================= */
   :root{
     --bg: #F7F8FA;
     --card: #fff;
     --muted: #6b7280;
     --accent: #02008a;
-    --navbar-height: 65px; /* used to position floating panel */
-        /* tweak these to move the line farther/closer and change arrow length */
-    --bunker-top-line-distance: 36px; /* distance from .layout top to horizontal line */
-    --bunker-arrow-height: 140px;     /* how long arrows reach down */
-    --line-left-offset: 4%;           /* start the line a bit earlier than first arrow */
-    --line-right-offset: 8.2%;          /* end the line before the right edge */
+    --navbar-height: 65px;
+
+    /* how much vertical space the input-section roughly takes.
+       tweak if your input section becomes taller. */
+    --input-height: 72px;
+
+    /* available area for diagram / bunkers */
+    --available-height: calc(100vh - var(--navbar-height) - var(--input-height) - 40px);
+
+    /* arrow / line defaults */
+    --bunker-top-line-distance: 30px;
+    --bunker-arrow-height: 120px;
+    --line-left-offset: 4%;
+    --line-right-offset: 8.2%;
     --arrow-width: 2px;
-    --arrow-head-size: 10px;  
+    --arrow-head-size: 10px;
+    --mills-vertical-gap: 12px;
+
+    /* how far to translate the add button vertically (defaults -50% center -> -40% moves it lower) */
+    --add-coal-translate-y: -40%;
   }
 
   *, *::before, *::after { box-sizing: border-box; }
 
-  body {
-    font-family: Inter, system-ui, Arial, Helvetica, sans-serif;
-    background: var(--bg);
+  html, body {
+    height: 100%;
     margin: 0;
+    background: var(--bg);
     color: #111;
-    -webkit-font-smoothing:antialiased;
-    -moz-osx-font-smoothing:grayscale;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-family: Inter, system-ui, Arial, Helvetica, sans-serif;
+
+    /* prevent page scroll; layout will fit into viewport */
+    overflow: hidden;
   }
 
-  /* hide non-essential UI kept in DOM */
-  #loader,
-  #downloadPDF,
-  .summary-table,
-  #summaryHidden {
-    display: none !important;
-  }
+  /* hide DOM-only helpers */
+  #loader, #downloadPDF, .summary-table, #summaryHidden { display: none !important; }
 
-  /* ------------------------------
+  /* =========================
      Navbar
-     ------------------------------ */
+     ========================= */
   .navbar {
     width: 100%;
     background-color: #f7f8fa;
@@ -62,20 +73,13 @@
     height: 95px;
     max-height: calc(var(--navbar-height) - 10px);
     margin-right: 10px;
-    margin-left: 0;
     object-fit: contain;
   }
-  .navbar h1 {
-    margin: 0 12px;
-    font-size: 20px;
-    color: #000;
-    font-weight: 700;
-    letter-spacing: 0.2px;
-  }
+  .navbar h1 { margin: 0 12px; font-size: 20px; color: #000; font-weight:700; letter-spacing:0.2px; }
   .nav-buttons { display:flex; gap:10px; align-items:center; margin-right:8px; }
   .navbar button {
     padding: 10px 15px;
-    background-color: #02008a;
+    background-color: var(--accent);
     color: #fff;
     border: none;
     cursor: pointer;
@@ -84,137 +88,106 @@
   }
   .navbar button:hover { background-color: #001cbb; }
 
-  /* ------------------------------
-     Floating compact input panel
-     - uses fixed positioning so it doesn't affect layout flow
-     ------------------------------ */
+  /* =========================
+     Input section (kept in-flow)
+     ========================= */
   .input-section {
-    position: fixed;
-    top: 140px; /* sits just below navbar */
-    left: 16px;
+    position: relative;
+    margin: calc(var(--navbar-height) + 8px) auto 8px auto;
     z-index: 1000;
-    padding: 10px;
-    background: #02008a;
-    border-radius: 10px;
+    padding: 6px 10px;
+    background: var(--accent);
+    border-radius: 8px;
     box-shadow: 0 6px 22px rgba(2,8,23,0.06);
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 8px;
-    max-width: 140px;
+    align-items: center;
+    width: fit-content;
     min-width: 96px;
+    max-width: 100%;
+    font-size: 13px;
+    /* ensure input-section height is consistent for --input-height usage */
+    min-height: var(--input-height);
   }
   .input-section label {
     font-size: 12px;
     font-weight: 600;
     color: #fff;
     margin: 0;
+    white-space: nowrap;
   }
   .input-section .input-box {
-    padding: 6px 10px;
+    padding: 6px 8px;
     font-size: 13px;
     border: 1px solid #d6d6d6;
     border-radius: 6px;
     outline: none;
     background: #fff;
+    width: 112px;
+    height: 34px;
+    line-height: 1;
+    box-sizing: border-box;
   }
   .input-section .input-box:focus {
     border-color: #007bff;
     box-shadow: 0 0 6px rgba(0,123,255,0.14);
   }
 
-  /* ------------------------------
-     Save / Submit button
-     ------------------------------ */
-/* Submit inside the floating input-section */
-#saveBtn {
-  /* non-fixed — the button lives inside the input panel so it flows with it */
-  position: relative;
-  display: inline-block;
-  background: red;
-  color: #fff;
-  border: none;
-  padding: 10px 14px;
-  font-size: 13px;
-  border-radius: 10px;
-  cursor: pointer;
-  box-shadow: 0 8px 24px rgba(2,8,23,0.14);
-  transition: transform .08s ease, box-shadow .12s;
-  min-width: 84px;
-  text-align: center;
-}
-
-/* active press */
-#saveBtn:active { transform: translateY(1px); }
-
-/* larger display on desktop if you want a bigger primary CTA */
-@media (min-width: 1100px) {
-  .input-section #saveBtn {
-    padding: 12px 18px;
-    font-size: 14px;
+  /* Save / Submit button */
+  #saveBtn {
+    position: relative;
+    display: inline-block;
+    background: red;
+    color: #fff;
+    border: none;
+    padding: 8px 12px;
+    font-size: 13px;
+    border-radius: 8px;
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(2,8,23,0.14);
+    transition: transform .08s ease, box-shadow .12s;
+    min-width: 72px;
+    text-align: center;
   }
-}
+  #saveBtn:active { transform: translateY(1px); }
 
-/* tighter on small screens */
-@media (max-width:700px) {
-  .input-section { left: 12px; top: calc(var(--navbar-height) + 12px); }
-  .input-section #saveBtn { padding: 10px 12px; font-size: 13px; }
-}
-
-/* If you still want a floating CTA on the lower-right for small screens:
-   uncomment this block and comment the display in .input-section (optional)
-#saveBtn.floating {
-  position: fixed;
-  right: 16px;
-  bottom: 16px;
-  z-index: 1200;
-  padding: 12px 16px;
-  border-radius: 12px;
-}
-@media (min-width: 900px) { #saveBtn.floating { right:24px; bottom:24px; } }
-*/
-
-
-  /* ------------------------------
-     Main grid - consolidated & consistent
-     - left column reserved for labels / control (coal-flow)
-     - next 6 columns allocated to bunkers/inputs
-     ------------------------------ */
+  /* =========================
+     Main grid & mapping
+     ========================= */
   .mills-grid {
     display: grid;
-    grid-template-columns: 150px repeat(6, 1fr)  ; /* left label + 6 bunkers */
-    gap: 12px;
+    grid-template-columns: 150px repeat(6, 1fr);
+    gap: var(--mills-vertical-gap);
     align-items: start;
-    padding: calc(var(--navbar-height) + 20px) 12px 24px 12px; /* push content below navbar visually */
+    padding: 6px 12px 12px 12px;
+    width: 100%;
+    box-sizing: border-box;
+
+    /* force mills-grid to use the remaining vertical space */
+    max-height: calc(100vh - var(--navbar-height) - var(--input-height));
+    overflow: hidden; /* no internal scrolling; content must fit */
   }
 
+  /* left header cells (Coal Flow / Next timer / Bunker Total) */
+  .mills-grid > .mill.coal-flow,
+  .mills-grid > .mill.next-timer,
+  .mills-grid > .mill.bunker-total {
+    grid-column: 1;
+    display: flex !important;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 6px 8px;
+    background: transparent;
+    font-weight: 700;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1;
+    height: 36px;
+    gap: 6px;
+  }
 
-  /* === Align each flow-input .mill under its corresponding bunker column === */
-/* Ensure the left label stays in column 1 */
-.mills-grid > .mill.coal-flow {
-  grid-column: 1;
-  align-self: center;
-  padding-left: 6px;
-}
-
-/* Map data-mill 0..5 to grid columns 2..7 so each input aligns under bunker 1..6 */
-.mills-grid > .mill:has(.flow-input[data-mill="0"]) { grid-column: 2; }
-.mills-grid > .mill:has(.flow-input[data-mill="1"]) { grid-column: 3; }
-.mills-grid > .mill:has(.flow-input[data-mill="2"]) { grid-column: 4; }
-.mills-grid > .mill:has(.flow-input[data-mill="3"]) { grid-column: 5; }
-.mills-grid > .mill:has(.flow-input[data-mill="4"]) { grid-column: 6; }
-.mills-grid > .mill:has(.flow-input[data-mill="5"]) { grid-column: 7; }
-
-/* Smaller screens: same mapping but tighter columns (helps prevent wrapping) */
-@media (max-width: 700px) {
-  .mills-grid > .mill:has(.flow-input[data-mill="0"]) { grid-column: 2; }
-  .mills-grid > .mill:has(.flow-input[data-mill="1"]) { grid-column: 3; }
-  .mills-grid > .mill:has(.flow-input[data-mill="2"]) { grid-column: 4; }
-  .mills-grid > .mill:has(.flow-input[data-mill="3"]) { grid-column: 5; }
-  .mills-grid > .mill:has(.flow-input[data-mill="4"]) { grid-column: 6; }
-  .mills-grid > .mill:has(.flow-input[data-mill="5"]) { grid-column: 7; }
-}
-
-  /* hide DOM-only fields (kept for logic) */
+  /* hide many non-essential fields kept for logic */
   .mills-grid .dropdown,
   .mills-grid .percentage-input,
   .mills-grid .gcv,
@@ -229,66 +202,110 @@
     display: none !important;
   }
 
-  /* by default hide .mill direct children (we selectively show the coal-flow row & flow inputs) */
+  /* default: hide all .mill direct children; selectively show those with flow/timer/total inputs */
   .mills-grid > .mill { display: none !important; }
 
-  /* coal-flow header cell (left column) */
-  .mills-grid > .mill.coal-flow {
+  /* show header coal-flow cell */
+  .mills-grid > .mill.coal-flow { display:flex !important; padding-left:6px; font-weight:700; color:var(--muted); font-size:14px; }
+
+  /* show mill containers that have .flow-input/.timer-input/.total-input */
+  .mills-grid > .mill:has(.flow-input),
+  .mills-grid > .mill:has(.timer-input),
+  .mills-grid > .mill:has(.total-input) {
     display: flex !important;
     align-items: center;
     justify-content: flex-start;
-    padding: 10px 12px;
-    background: transparent;
-    font-weight: 700;
+    padding: 4px 6px !important;
   }
 
-  /* modern nicety: show mill containers that have .flow-input (fallback ensured by explicit flow inputs below) */
-  .mills-grid > .mill:has(.flow-input) {
-    display:flex !important;
-    align-items:center;
-    justify-content:flex-start;
-    padding:6px;
-  }
+  /* map data-mill 0..5 to columns 2..7 */
+  .mills-grid > .mill:has(.flow-input[data-mill="0"]),
+  .mills-grid > .mill:has(.timer-input[data-mill="0"]),
+  .mills-grid > .mill:has(.total-input[data-mill="0"]) { grid-column: 2; }
+  .mills-grid > .mill:has(.flow-input[data-mill="1"]),
+  .mills-grid > .mill:has(.timer-input[data-mill="1"]),
+  .mills-grid > .mill:has(.total-input[data-mill="1"]) { grid-column: 3; }
+  .mills-grid > .mill:has(.flow-input[data-mill="2"]),
+  .mills-grid > .mill:has(.timer-input[data-mill="2"]),
+  .mills-grid > .mill:has(.total-input[data-mill="2"]) { grid-column: 4; }
+  .mills-grid > .mill:has(.flow-input[data-mill="3"]),
+  .mills-grid > .mill:has(.timer-input[data-mill="3"]),
+  .mills-grid > .mill:has(.total-input[data-mill="3"]) { grid-column: 5; }
+  .mills-grid > .mill:has(.flow-input[data-mill="4"]),
+  .mills-grid > .mill:has(.timer-input[data-mill="4"]),
+  .mills-grid > .mill:has(.total-input[data-mill="4"]) { grid-column: 6; }
+  .mills-grid > .mill:has(.flow-input[data-mill="5"]),
+  .mills-grid > .mill:has(.timer-input[data-mill="5"]),
+  .mills-grid > .mill:has(.total-input[data-mill="5"]) { grid-column: 7; }
 
-  /* diagram area stretches across the 6 bunker columns */
-  .mills-grid > .diagram-in-grid {
-    display: block !important;
-    grid-column: 2 / span 6;
-    padding: 8px;
-  }
+  /* force display helpers */
+  .mills-grid > .mill.show-row { display:flex !important; }
+  .mills-grid > .mill.show-row input.next-blend-box,
+  .mills-grid > .mill.show-row input { display: block !important; width: 100%; box-sizing: border-box; }
 
-  /* diagram card */
+  /* Inputs styles (shared) */
+  .flow-input,
+  .timer-input,
+  .total-input {
+    width: 100%;
+    max-width: 140px;
+    min-width: 64px;
+    padding: 6px;
+    height: 34px;
+    border-radius: 8px;
+    border: 1px solid #e6e6e6;
+    font-size: 14px;
+    text-align: center;
+    background: #fff;
+    box-sizing: border-box;
+  }
+  .total-input[readonly] { background: #fff; color: #111; }
+
+  .coal-flow { font-weight:700; color:var(--muted); font-size:14px; padding-left:6px; }
+
+  /* =========================
+     Diagram / Bunkers
+     ========================= */
+  .diagram-in-grid { display:block !important; grid-column: 2 / span 6; padding: 6px !important; }
   .diagram-in-grid .layout {
     background: var(--card);
     border-radius: 12px;
-    padding: 16px;
-    box-shadow: 0 8px 30px rgba(2,8,23,0.06);
+    padding: 12px;
+    box-shadow: 0 6px 18px rgba(2,8,23,0.06);
+    position: relative;
+    overflow: hidden; /* prevent additional scrolling */
+    min-height: 320px;
+    /* make layout fit available height */
+    height: min(560px, calc(var(--available-height)));
   }
 
-  /* bunkers grid */
   .bunkers-grid {
     display: grid;
     grid-template-columns: repeat(6, 1fr);
-    gap: 22px;
+    gap: 14px;
     align-items: end;
-    padding: 18px;
+    padding: 10px;
+    height: 100%;
+    box-sizing: border-box;
   }
+
+  /* bunker heights now scale to the available viewport area so page won't scroll */
   .bunker {
     position: relative;
-    height: 460px;
+    /* clamp so it never becomes too small or too large */
+    height: clamp(190px, calc(var(--available-height) * 0.78), 460px);
     display:flex;
     flex-direction:column;
     align-items:center;
     justify-content:flex-end;
   }
-  .bunker svg { width:100%; height:100%; max-width:260px; max-height:420px; display:block; }
+  .bunker svg { width:100%; height:100%; max-width:320px; max-height:420px; display:block; object-fit:contain; }
   .bunker .label {
     position:absolute;
     bottom:12px;
     left:50%;
     transform:translateX(-50%);
     font-size:14px;
-    /* background:rgba(255,255,255,0.95); */
     background:rgba(255,255,255,0.95);
     padding:8px 12px;
     border-radius:10px;
@@ -296,38 +313,33 @@
     white-space:nowrap;
   }
 
-  /* add coal button */
-  .add-coal-btn {
-    position:absolute;
-    top:10px;
-    right:12px;
-    border-radius:50%;
-    width:48px;
-    height:48px;
-    border:none;
-    background:#0ea5a4;
-    color:#fff;
-    font-size:22px;
-    cursor:pointer;
-    box-shadow:0 6px 18px rgba(2,6,23,0.14);
-  }
-  .add-coal-btn:active { transform: scale(.98); }
+  /* per-bunker add button hidden (we use overlay button) */
+  .bunker .add-coal-btn { display: none !important; }
 
-  /* Flow inputs */
-  .flow-input {
-    width: 100%;
-    max-width: 140px;
-    min-width: 72px;
-    padding: 8px;
-    border-radius: 8px;
-    border: 1px solid #e6e6e6;
-    font-size: 15px;
-    text-align: center;
-    background: #fff;
+  /* overlay add button styles (placed in .top-overlay)
+     moved slightly lower by adjusting the translateY variable */
+  .add-coal-overlay {
+    position: absolute;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: #0ea5a4;
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    cursor: pointer;
+    box-shadow: 0 6px 18px rgba(2,6,23,0.14);
+    z-index: 1200;
+    /* previously translate(-50%,-50%) - now uses variable so we can move it down easily */
+    transform: translate(-50%, var(--add-coal-translate-y));
+    pointer-events: auto;
   }
-  .coal-flow { font-weight:700; color:var(--muted); font-size:14px; padding-left:6px; }
+  .add-coal-overlay:active { transform: translate(-50%, var(--add-coal-translate-y)) scale(.98); }
 
-  /* popup styling (unchanged but consistent) */
+  /* popup */
   .popup { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.35); z-index:1500; }
   .popup.hidden { display:none; }
   .popup-content {
@@ -368,100 +380,8 @@
   }
   .bunker:hover .tooltip { display:block; }
 
-  /* ------------------------------
-     Responsive: tidy sizes + repositioning
-     ------------------------------ */
-
-  /* Slightly narrower screens */
-  @media (max-width:1100px) {
-    .bunker { height: 360px; }
-    .bunker svg { max-width:220px; max-height:340px; }
-    .bunkers-grid { grid-template-columns: repeat(3, 1fr); gap:18px; padding:14px; }
-    .flow-input { max-width:120px; font-size:14px; padding:6px; }
-    .mills-grid { padding: calc(var(--navbar-height) + 16px) 10px 18px 10px; gap:10px; }
-  }
-
-  /* Tablet / Large phone */
-  @media (max-width:700px) {
-    :root { --navbar-height: 56px; }
-    .navbar { height: var(--navbar-height); padding: 10px 14px; }
-    .navbar img { height: 44px; max-height: calc(var(--navbar-height) - 6px); }
-
-    /* floating input panel: move a bit down on smaller screens but remains fixed */
-    .input-section {
-      top: calc(var(--navbar-height) + 12px);
-      left: 12px;
-      max-width: 120px;
-      padding: 8px;
-      gap: 6px;
-      border-radius: 8px;
-    }
-    .input-section label { font-size: 12px; }
-    .input-section .input-box { font-size: 13px; padding:6px 8px; }
-
-    .bunker { height: 300px; }
-    .bunker svg { max-width:180px; max-height:260px; }
-    .bunker .label { font-size:13px; padding:6px 10px; }
-
-    .flow-input { max-width: 110px; padding: 6px; font-size:13px; }
-
-    /* tighten grid spacing & padding */
-    .mills-grid { grid-template-columns: 120px repeat(6, 1fr); gap:10px; padding: calc(var(--navbar-height) + 12px) 8px 16px 8px; }
-    #saveBtn { right:12px; bottom:12px; padding:12px 16px; font-size:16px; }
-  }
-
-  /* Small phones */
-  @media (max-width:480px) {
-    :root { --navbar-height: 52px; }
-    .navbar { height: var(--navbar-height); padding:8px 10px; }
-    .navbar img { height: 38px; max-height: calc(var(--navbar-height) - 6px); margin-right:8px; }
-
-    .input-section {
-      top: calc(var(--navbar-height) + 8px);
-      left: 8px;
-      max-width: 100px;
-      padding: 6px;
-      gap: 6px;
-      border-radius: 7px;
-    }
-    .input-section label { font-size:11px; }
-    .input-section .input-box { font-size:12px; padding:6px 8px; }
-
-    /* bunkers become 2 columns so they fit and keep coal-flow inputs aligned */
-    .bunkers-grid { grid-template-columns: repeat(2, 1fr); gap:12px; padding:10px; }
-    .bunker { height: 220px; }
-    .bunker svg { max-width:120px; max-height:180px; }
-    .bunker .label { font-size:12px; padding:5px 8px; min-width:100px; }
-
-    .mills-grid { grid-template-columns: 120px repeat(6, minmax(60px, 1fr)); gap:8px; padding: calc(var(--navbar-height) + 8px) 8px 12px 8px; }
-    .flow-input { max-width: 80px; width: 100%; padding:6px; font-size:12px; }
-
-    .popup-content { width: 320px; padding:14px; }
-  }
-
-  /* Very small narrow phones */
-  @media (max-width:360px) {
-    .input-section { top: calc(var(--navbar-height) + 6px); left: 8px; max-width:92px; padding:6px; }
-    .input-section label { font-size:10px; }
-    .input-section .input-box { font-size:11px; padding:5px 6px; }
-
-    .bunker { height: 190px; }
-    .bunker svg { max-width:100px; max-height:150px; }
-    .bunker .label { font-size:11px; padding:4px 6px; min-width:90px; }
-
-    .flow-input { max-width: 64px; font-size:11px; padding:5px; }
-    #saveBtn { padding:10px 12px; font-size:14px; }
-  }
-
-   .diagram-in-grid .layout { position: relative; overflow: visible; }
-
-  .top-overlay { 
-    position: absolute;
-    inset: 0 0 0 0;
-    pointer-events: none;
-    z-index: 90;
-  }
-
+  /* top overlay / arrows / line */
+  .top-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 90; }
   .top-line {
     position: absolute;
     top: var(--bunker-top-line-distance);
@@ -470,41 +390,367 @@
     height: 2px;
     background: #000;
   }
-
   .arrow {
     position: absolute;
     width: var(--arrow-width);
-    background:  #000;
+    background: #000;
     top: var(--bunker-top-line-distance);
     height: var(--bunker-arrow-height);
     transform-origin: top center;
   }
-
-  /* small arrow head (triangle) */
   .arrow::after {
     content: '';
     position: absolute;
-    left: calc(50% - 7px); /* center the triangle under the vertical bar */
+    left: calc(50% - 7px);
     top: 100%;
     width: 0;
     height: 0;
     border-left: 7px solid transparent;
     border-right: 7px solid transparent;
-    border-top: var(--arrow-head-size) solid  #000;
+    border-top: var(--arrow-head-size) solid #000;
   }
 
-  /* small-screen tweaks so it won't overlap too much */
+  /* small visual density & compact tweaks */
+  .diagram-in-grid .layout { box-shadow: 0 6px 18px rgba(2,8,23,0.06); }
+  .bunkers-grid { gap: 14px; padding: 10px; }
+
+  /* responsive adjustments - keep the scaling behavior so everything fits */
   @media (max-width:1100px) {
-    :root { --bunker-top-line-distance: 30px; --bunker-arrow-height:140px; }
+    :root { --bunker-top-line-distance: 30px; --bunker-arrow-height: 140px; --available-height: calc(100vh - var(--navbar-height) - var(--input-height) - 60px); }
+    .input-section { padding: 6px 10px; gap:8px; margin: calc(var(--navbar-height) + 6px) 12px 8px 12px; width: auto; }
+    .bunker { height: clamp(190px, calc(var(--available-height) * 0.78), 420px); }
+    .bunker svg { max-width: 280px; max-height: 380px; }
+    .bunkers-grid { grid-template-columns: repeat(3, 1fr); gap:18px; padding:14px; }
+    .flow-input, .timer-input, .total-input { max-width: 110px; height: 32px; font-size: 13px; }
+    .mills-grid { gap: 10px; padding: calc(var(--navbar-height) + 12px) 10px 18px 10px; }
+    .diagram-in-grid .layout { min-height: 320px; height: calc(var(--available-height)); }
+    .add-coal-overlay { width: 40px; height: 40px; font-size: 20px; }
   }
+
   @media (max-width:700px) {
-    :root { --bunker-top-line-distance: 26px; --bunker-arrow-height:110px; }
+    :root { --navbar-height: 56px; --bunker-top-line-distance: 26px; --bunker-arrow-height: 110px; --available-height: calc(100vh - var(--navbar-height) - var(--input-height) - 70px); --add-coal-translate-y: -35%; }
+    .navbar { height: var(--navbar-height); padding: 10px 14px; }
+    .navbar img { height: 44px; max-height: calc(var(--navbar-height) - 6px); }
+    .input-section {
+      position: relative;
+      margin: calc(var(--navbar-height) + 12px) 12px 12px 12px;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+      padding: 8px;
+      max-width: calc(100% - 24px);
+      border-radius: 8px;
+      width: auto;
+    }
+    .input-section label { font-size: 12px; }
+    .input-section .input-box { font-size: 13px; padding:6px 8px; width: 100%; height: 36px; }
+
+    .bunkers-grid { grid-template-columns: repeat(3, 1fr); gap:18px; padding:14px; }
+    .bunker { height: clamp(190px, calc(var(--available-height) * 0.75), 340px); }
+    .bunker svg { max-width: 220px; max-height: 300px; }
+    .bunker .label { font-size:13px; padding:6px 10px; }
+    .flow-input, .timer-input, .total-input { max-width: 100%; height: 36px; font-size: 13px; padding:6px; }
+
+    .mills-grid { grid-template-columns: 120px repeat(6, 1fr); gap:10px; padding: calc(var(--navbar-height) + 12px) 8px 16px 8px; }
+    .diagram-in-grid .layout { min-height: 280px; height: calc(var(--available-height)); }
+    .add-coal-overlay { width: 40px; height: 40px; }
   }
+
   @media (max-width:480px) {
-    :root { --bunker-top-line-distance: 22px; --bunker-arrow-height:90px; }
+    :root { --navbar-height: 52px; --bunker-top-line-distance: 22px; --bunker-arrow-height: 90px; --available-height: calc(100vh - var(--navbar-height) - var(--input-height) - 90px); --add-coal-translate-y: -30%; }
+    .navbar { height: var(--navbar-height); padding:8px 10px; }
+    .navbar img { height: 38px; max-height: calc(var(--navbar-height) - 6px); margin-right:8px; }
+
+    .input-section {
+      margin: calc(var(--navbar-height) + 8px) 8px 10px 8px;
+      padding: 6px;
+      gap: 6px;
+      max-width: calc(100% - 16px);
+      border-radius: 7px;
+    }
+    .input-section label { font-size:11px; }
+    .input-section .input-box { font-size:12px; padding:6px 8px; width: 100%; height: 32px; }
+
+    .bunkers-grid { grid-template-columns: repeat(2, 1fr); gap:12px; padding:10px; }
+    .bunker { height: clamp(160px, calc(var(--available-height) * 0.7), 260px); }
+    .bunker svg { max-width:150px; max-height:220px; }
+    .bunker .label { font-size:12px; padding:5px 8px; min-width:100px; }
+
+    .mills-grid { grid-template-columns: 120px repeat(6, minmax(60px, 1fr)); gap:8px; padding: calc(var(--navbar-height) + 8px) 8px 12px 8px; }
+    .flow-input, .timer-input, .total-input { max-width: 100%; height: 32px; font-size: 12px; }
+    .popup-content { width: 320px; padding:14px; }
+    .add-coal-overlay { width: 36px; height: 36px; font-size: 18px; }
   }
-  
+
+  @media (max-width:360px) {
+    .input-section { margin: calc(var(--navbar-height) + 6px) 8px 8px 8px; padding:6px; max-width: calc(100% - 16px); }
+    .input-section label { font-size:10px; }
+    .input-section .input-box { font-size:11px; padding:5px 6px; height: 32px; }
+    .bunker { height: clamp(140px, calc(var(--available-height) * 0.65), 190px); }
+    .bunker svg { max-width:100px; max-height:150px; }
+    .bunker .label { font-size:11px; padding:4px 6px; min-width:90px; }
+    .flow-input, .timer-input, .total-input { max-width: 80px; font-size:11px; padding:5px; }
+    #saveBtn { padding:10px 12px; font-size:14px; }
+  }
+
+  /* Accessibility / minor fixes */
+  .mills-grid > .mill.coal-flow,
+  .mills-grid > .mill.next-timer,
+  .mills-grid > .mill.bunker-total { align-items: center; }
+
 </style>
+<!-- ===== Replace previous overlay/fit patches with this single block ===== -->
+<style>
+  :root{
+    --add-coal-translate-y: -10%; /* change to -30%/-20% etc to nudge vertical position */
+  }
+
+  /* Ensure diagram container doesn't clip overlay buttons */
+  .diagram-in-grid .layout {
+    overflow: visible !important;
+  }
+
+  /* top overlay covers the whole layout and sits above content */
+  .diagram-in-grid .top-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1200;
+  }
+
+  .diagram-in-grid .top-overlay .add-coal-overlay {
+    pointer-events: auto;
+  }
+
+  /* overlay button visuals (vertical offset controlled by CSS var) */
+  .add-coal-overlay {
+    position: absolute;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: #0ea5a4;
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    cursor: pointer;
+    box-shadow: 0 6px 18px rgba(2,6,23,0.14);
+    z-index: 1300;
+    transform: translate(-50%, var(--add-coal-translate-y));
+    transition: transform .08s linear, top .08s linear, left .08s linear;
+  }
+  .add-coal-overlay:active { transform: translate(-50%, var(--add-coal-translate-y)) scale(.98); }
+
+  /* make mills-grid internally scrollable so rows aren't cut */
+  .mills-grid {
+    /* keep the layout-height set by your JS (or CSS var) and allow internal scrolling */
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* keep header rows visible */
+  .mills-grid > .mill.coal-flow,
+  .mills-grid > .mill.next-timer,
+  .mills-grid > .mill.bunker-total {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    background: transparent;
+  }
+
+  /* responsive tweak for overlay size if needed */
+  @media (max-width:700px){ .add-coal-overlay{ width:40px; height:40px; font-size:20px;} }
+  @media (max-width:480px){ .add-coal-overlay{ width:36px; height:36px; font-size:18px;} }
+</style>
+
+<script>
+(function(){
+  if(window.__bunkerOverlayFix_v3) return;
+  window.__bunkerOverlayFix_v3 = true;
+
+  // ensure top-overlay exists
+  function ensureTopOverlay(){
+    const layout = document.querySelector('.diagram-in-grid .layout');
+    if(!layout) return null;
+    // ensure layout will not clip overlays
+    layout.style.overflow = 'visible';
+    let overlay = layout.querySelector('.top-overlay');
+    if(!overlay){
+      overlay = document.createElement('div');
+      overlay.className = 'top-overlay';
+      // insert as first child so it's positioned relative to layout
+      layout.insertBefore(overlay, layout.firstChild);
+    }
+    return { layout, overlay };
+  }
+
+  // create one overlay button per arrow if missing
+  function createOverlayButtons(){
+    const res = ensureTopOverlay();
+    if(!res) return;
+    const { layout, overlay } = res;
+    const arrows = Array.from(layout.querySelectorAll('.arrow'));
+    // remove any extra buttons whose index is out of range
+    const existing = Array.from(overlay.querySelectorAll('.add-coal-overlay'));
+    existing.forEach(btn=>{
+      const idx = Number(btn.dataset.bunker);
+      if(Number.isNaN(idx) || idx < 0 || idx >= arrows.length) btn.remove();
+    });
+
+    arrows.forEach((arrow, index) => {
+      let btn = overlay.querySelector(`.add-coal-overlay[data-bunker="${index}"]`);
+      if(!btn){
+        btn = document.createElement('button');
+        btn.className = 'add-coal-overlay';
+        btn.dataset.bunker = String(index);
+        btn.setAttribute('aria-label', `Add coal to bunker ${index+1}`);
+        btn.innerText = '+';
+        btn.addEventListener('click', function(ev){
+          ev.stopPropagation();
+          if(typeof window.openCoalPopup === 'function'){
+            window.openCoalPopup(index);
+          } else {
+            console.warn('openCoalPopup not found for add-coal-overlay');
+          }
+        });
+        overlay.appendChild(btn);
+      }
+    });
+  }
+
+  // helper to detect rect collisions
+  function rectsIntersect(a,b){
+    return !(b.left >= a.right || b.right <= a.left || b.top >= a.bottom || b.bottom <= a.top);
+  }
+
+  // position overlay buttons at arrow tips; nudge up to avoid overlapping colored rects
+  function positionOverlayButtons(){
+    const res = ensureTopOverlay();
+    if(!res) return;
+    const { layout, overlay } = res;
+    const layoutRect = layout.getBoundingClientRect();
+    const arrows = Array.from(layout.querySelectorAll('.arrow'));
+    const buttons = Array.from(overlay.querySelectorAll('.add-coal-overlay'));
+    const coloredRects = Array.from(document.querySelectorAll('.bunker svg rect')).filter(r => r.getBoundingClientRect().width > 0 && r.getBoundingClientRect().height > 0);
+    const rectBoxes = coloredRects.map(r => r.getBoundingClientRect());
+    const rootStyle = getComputedStyle(document.documentElement);
+    const arrowHeadSize = parseFloat(rootStyle.getPropertyValue('--arrow-head-size')) || 10;
+
+    arrows.forEach((arrow, idx) => {
+      const btn = overlay.querySelector(`.add-coal-overlay[data-bunker="${idx}"]`);
+      if(!btn) return;
+      const arrowRect = arrow.getBoundingClientRect();
+      const tipY = (arrowRect.top - layoutRect.top) + arrowRect.height + arrowHeadSize;
+      const tipX = (arrowRect.left - layoutRect.left) + (arrowRect.width / 2);
+
+      // default position slightly below tip
+      let desiredTop = tipY + 8;
+      let attempts = 0;
+      const maxAttempts = 8;
+      const stepUp = 10;
+      let overlapped = false;
+
+      // set left/top only; transform is handled by CSS var --add-coal-translate-y
+      btn.style.left = `${tipX}px`;
+      btn.style.top = `${desiredTop}px`;
+
+      do {
+        btn.style.left = `${tipX}px`;
+        btn.style.top = `${desiredTop}px`;
+        const btnBox = btn.getBoundingClientRect();
+        overlapped = rectBoxes.some(rBox => rectsIntersect(btnBox, rBox));
+        if(overlapped){
+          desiredTop -= stepUp; // move up to avoid overlap
+        }
+        attempts++;
+      } while(overlapped && attempts < maxAttempts);
+
+      // clamp inside layout area
+      const minTop = 8;
+      const maxTop = layoutRect.height - 8;
+      const finalTop = Math.max(minTop, Math.min(maxTop, desiredTop));
+      btn.style.top = `${finalTop}px`;
+    });
+  }
+
+  // compute sizes and ensure mills-grid fills available space but scrolls internally
+  function computeSizesAndApply(){
+    const navbar = document.querySelector('.navbar');
+    const inputSec = document.querySelector('.input-section');
+    const navH = navbar ? navbar.getBoundingClientRect().height : 0;
+    const inputH = inputSec ? inputSec.getBoundingClientRect().height : 0;
+    const reserved = 8;
+    const available = Math.max(220, Math.floor(window.innerHeight - navH - inputH - reserved));
+
+    // update CSS vars (px) so CSS clamp calculations become exact
+    document.documentElement.style.setProperty('--input-height', inputH + 'px');
+    document.documentElement.style.setProperty('--available-height', available + 'px');
+
+    // apply to main container and mills-grid
+    const mainContainer = document.querySelector('.main-container') || document.querySelector('.mills-grid')?.parentElement;
+    const mills = document.querySelector('.mills-grid');
+    if(mainContainer){
+      mainContainer.style.height = available + 'px';
+      mainContainer.style.overflow = 'hidden';
+      mainContainer.style.boxSizing = 'border-box';
+    }
+    if(mills){
+      mills.style.height = available + 'px';
+      mills.style.maxHeight = available + 'px';
+      mills.style.overflow = 'auto'; // allow internal scrolling
+      mills.style.boxSizing = 'border-box';
+      mills.style.paddingBottom = '8px';
+    }
+
+    // ensure diagram layout fits
+    const layout = document.querySelector('.diagram-in-grid .layout');
+    if(layout){
+      const target = Math.max(120, available - 40);
+      layout.style.height = target + 'px';
+      layout.style.maxHeight = target + 'px';
+      layout.style.boxSizing = 'border-box';
+      layout.style.overflow = 'visible'; // important: don't clip overlay
+    }
+  }
+
+  function refreshAll(){
+    createOverlayButtons();
+    computeSizesAndApply();
+    setTimeout(positionOverlayButtons, 45);
+  }
+
+  // wrap existing updateBunkerColors if present so overlays reposition after color updates
+  if(typeof window.updateBunkerColors === 'function' && !window.__wrappedUpdateBunkerColorsForTip_v3){
+    window.__wrappedUpdateBunkerColorsForTip_v3 = true;
+    const orig = window.updateBunkerColors;
+    window.updateBunkerColors = function(...args){
+      try{ orig.apply(this,args); }catch(e){ console.error(e); }
+      setTimeout(refreshAll, 80);
+    };
+  }
+
+  window.addEventListener('resize', function(){
+    if(window.__bunkerOverlayFix_resize) clearTimeout(window.__bunkerOverlayFix_resize);
+    window.__bunkerOverlayFix_resize = setTimeout(refreshAll, 90);
+  });
+  window.addEventListener('orientationchange', function(){ setTimeout(refreshAll, 150); });
+
+  document.addEventListener('DOMContentLoaded', function(){
+    refreshAll();
+    // run again after short delay to catch late layout shifts
+    setTimeout(refreshAll, 160);
+  });
+
+  // manual trigger for debugging/tweaks
+  window.__refreshBunkerOverlayAndFit = refreshAll;
+})();
+</script>
+
+
+
+
 
 </head>
 <body>
@@ -645,8 +891,8 @@
     <div class="top-line"></div>
 
     <!-- arrows positioned by percentage (centers of 6 equal columns) -->
-    <div class="arrow" style="left:8.3333%;"></div>
-    <div class="arrow" style="left:25%;"></div>
+    <div class="arrow" style="left:9.3333%;"></div>
+    <div class="arrow" style="left:26%;"></div>
     <div class="arrow" style="left:41.6667%;"></div>
     <div class="arrow" style="left:58.3333%;"></div>
     <div class="arrow" style="left:75%;"></div>
@@ -713,6 +959,52 @@
       <div class="mill"><input type="text" class="flow-input" data-mill="5" placeholder="TPH"></div>
       <div></div>
       <div></div>
+
+<!-- Next Timer row -->
+<div class="mill next-timer">Next timer</div>
+<div class="mill"><input type="text" class="flow-input timer-input" data-mill="0" placeholder="hh:mm:ss"></div>
+<div class="mill"><input type="text" class="flow-input timer-input" data-mill="1" placeholder="hh:mm:ss"></div>
+<div class="mill"><input type="text" class="flow-input timer-input" data-mill="2" placeholder="hh:mm:ss"></div>
+<div class="mill"><input type="text" class="flow-input timer-input" data-mill="3" placeholder="hh:mm:ss"></div>
+<div class="mill"><input type="text" class="flow-input timer-input" data-mill="4" placeholder="hh:mm:ss"></div>
+<div class="mill"><input type="text" class="flow-input timer-input" data-mill="5" placeholder="hh:mm:ss"></div>
+<div></div>
+<div></div>
+
+<!-- Bunker Total row -->
+<div class="mill bunker-total">Bunker Total</div>
+<div class="mill"><input type="text" class="flow-input total-input" data-mill="0" placeholder="TPH"></div>
+<div class="mill"><input type="text" class="flow-input total-input" data-mill="1" placeholder="TPH"></div>
+<div class="mill"><input type="text" class="flow-input total-input" data-mill="2" placeholder="TPH"></div>
+<div class="mill"><input type="text" class="flow-input total-input" data-mill="3" placeholder="TPH"></div>
+<div class="mill"><input type="text" class="flow-input total-input" data-mill="4" placeholder="TPH"></div>
+<div class="mill"><input type="text" class="flow-input total-input" data-mill="5" placeholder="TPH"></div>
+<div></div>
+<div></div>
+
+
+      <!-- NEW ROW: Total percent present in each bunker (readonly) -->
+      <!-- <div class="mill show-row">Total % in Bunker</div>
+      <div class="mill show-row"><input type="text" id="totalPercent0" class="next-blend-box" readonly></div>
+      <div class="mill show-row"><input type="text" id="totalPercent1" class="next-blend-box" readonly></div>
+      <div class="mill show-row"><input type="text" id="totalPercent2" class="next-blend-box" readonly></div>
+      <div class="mill show-row"><input type="text" id="totalPercent3" class="next-blend-box" readonly></div>
+      <div class="mill show-row"><input type="text" id="totalPercent4" class="next-blend-box" readonly></div>
+      <div class="mill show-row"><input type="text" id="totalPercent5" class="next-blend-box" readonly></div>
+      <div class="mill show-row"></div>
+      <div class="mill show-row"></div> -->
+
+      <!-- NEW ROW: Time to empty bunker (readonly HH:MM:SS) -->
+      <!-- <div class="mill show-row">Time to Empty</div>
+      <div class="mill show-row"><input type="text" id="timeToEmpty0" class="next-blend-box" readonly></div>
+      <div class="mill show-row"><input type="text" id="timeToEmpty1" class="next-blend-box" readonly></div>
+      <div class="mill show-row"><input type="text" id="timeToEmpty2" class="next-blend-box" readonly></div>
+      <div class="mill show-row"><input type="text" id="timeToEmpty3" class="next-blend-box" readonly></div>
+      <div class="mill show-row"><input type="text" id="timeToEmpty4" class="next-blend-box" readonly></div>
+      <div class="mill show-row"><input type="text" id="timeToEmpty5" class="next-blend-box" readonly></div>
+      <div class="mill show-row"></div>
+      <div class="mill show-row"></div> -->
+
       
       <!-- AFT row (kept in DOM but hidden) -->
       <div class="mill aft-head">AFT(°C)</div>
@@ -1606,6 +1898,173 @@ function updateBunkerTooltips() {
   });
 }
 setInterval(updateBunkerTooltips, 1500);
+
+
+/* ---------- Patch: bunker totals + live "Next timer" countdowns ---------- */
+(function(){
+  // avoid double-paste
+  if(window.__bunkerTotalsPatch) return;
+  window.__bunkerTotalsPatch = true;
+
+  // keep reference to original calculateBlended (if present)
+  const _origCalculateBlended = (typeof calculateBlended === 'function') ? calculateBlended : null;
+
+  // helpers ---------------------------------------------------------------
+
+  // Sum percent for a bunker (reads percentage-input rows 1..N)
+  function getBunkerPercentSum(bIndex){
+    let sum = 0;
+    const N = (typeof NUM_COAL_ROWS !== 'undefined') ? Number(NUM_COAL_ROWS) : (window.NUM_COAL_ROWS || 5);
+    for(let r=1; r<=N; r++){
+      sum += parseFloat(document.querySelector(`.percentage-input[data-row="${r}"][data-mill="${bIndex}"]`)?.value) || 0;
+    }
+    return Math.max(0, Math.min(100, sum));
+  }
+
+  // Update the "Bunker Total" inputs (class total-input) with percent string
+  function updateBunkerTotalsUI(){
+    for(let m=0;m<6;m++){
+      // prefer an input with class total-input and data-mill
+      const el = document.querySelector(`.total-input[data-mill="${m}"]`);
+      const sumPct = getBunkerPercentSum(m);
+      if(el){
+        // keep it as "xx.xx%" string so it is readable; also store numeric on dataset
+        el.value = `${sumPct.toFixed(2)}%`;
+        el.dataset.percent = String(sumPct);
+      }
+    }
+  }
+
+  // Compute total seconds for bunker using existing computeLayerSeconds if available
+  function computeTotalBunkerSeconds(bIndex){
+    if(typeof computeLayerSeconds === 'function'){
+      const arr = computeLayerSeconds(bIndex) || [];
+      return arr.reduce((a,b)=>a + (Number(b)||0), 0);
+    }
+    // fallback: use sumPct / 100 * bunkerCapacity / flow
+    const sumPct = getBunkerPercentSum(bIndex);
+    const bunkerCapacity = (typeof getSingleBunkerCapacity === 'function') ? Number(getSingleBunkerCapacity() || 0) : (parseFloat(document.getElementById('bunkerCapacity')?.value) || 0);
+    const flow = parseFloat(document.querySelector(`.flow-input[data-mill="${bIndex}"]`)?.value) || 0;
+    if(flow <= 0 || bunkerCapacity <= 0 || sumPct <= 0) return 0;
+    const hours = (sumPct / 100.0) * bunkerCapacity / flow;
+    return hours * 3600;
+  }
+
+  // formatHMS already exists in your script; fallback if not
+  function _formatHMS(sec){
+    if(typeof formatHMS === 'function') return formatHMS(sec);
+    const s = Math.max(0, Math.floor(sec));
+    const hrs = Math.floor(s / 3600);
+    const mins = Math.floor((s % 3600) / 60);
+    const secs = s % 60;
+    return `${String(hrs).padStart(2,'0')}:${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+  }
+
+  // Live countdown manager for 6 bunkers (timer-input)
+  const totalCountdowns = new Array(6).fill(null).map(()=>({ intervalId: null, remaining: 0 }));
+
+  function _updateTimerUI(bIndex){
+    const el = document.querySelector(`.timer-input[data-mill="${bIndex}"]`);
+    if(!el) return;
+    const rem = totalCountdowns[bIndex].remaining || 0;
+    if(rem > 0){
+      el.value = _formatHMS(rem);
+      el.dataset.seconds = String(Math.max(0, Math.floor(rem)));
+    } else {
+      el.value = '--';
+      el.dataset.seconds = '0';
+    }
+  }
+
+  function clearTotalCountdown(bIndex){
+    const obj = totalCountdowns[bIndex];
+    if(obj && obj.intervalId){ clearInterval(obj.intervalId); obj.intervalId = null; }
+    obj.remaining = 0;
+    _updateTimerUI(bIndex);
+  }
+
+  function startOrResetTotalCountdown(bIndex, seconds){
+    bIndex = Number(bIndex);
+    if(Number.isNaN(bIndex) || bIndex < 0 || bIndex >= totalCountdowns.length) return;
+    const secs = Math.max(0, Math.floor(Number(seconds) || 0));
+    const obj = totalCountdowns[bIndex];
+
+    // if secs is zero -> clear UI & timers
+    if(secs <= 0){ clearTotalCountdown(bIndex); return; }
+
+    // if timer already running, reset remaining
+    if(obj.intervalId){
+      obj.remaining = secs;
+      _updateTimerUI(bIndex);
+      return;
+    }
+
+    // otherwise start a new interval
+    obj.remaining = secs;
+    _updateTimerUI(bIndex);
+    obj.intervalId = setInterval(()=>{
+      obj.remaining = Math.max(0, obj.remaining - 1);
+      if(obj.remaining <= 0){
+        clearTotalCountdown(bIndex);
+      } else {
+        _updateTimerUI(bIndex);
+      }
+    }, 1000);
+  }
+
+  // Public helpers (optional)
+  window.updateBunkerTotalsUI = updateBunkerTotalsUI;
+  window.clearTotalCountdown = clearTotalCountdown;
+  window.startOrResetTotalCountdown = startOrResetTotalCountdown;
+  window.computeTotalBunkerSeconds = computeTotalBunkerSeconds;
+
+  // Wrapper: replace calculateBlended with a wrapper that calls original then our updates
+  function wrappedCalculateBlended(){
+    try{
+      if(typeof _origCalculateBlended === 'function'){
+        // call original logic
+        _origCalculateBlended();
+      } else {
+        // if original missing, at least run some fallbacks
+        console.warn('Original calculateBlended not found — running fallback updates only.');
+      }
+    } catch(err){
+      console.error('Error running original calculateBlended():', err);
+    }
+
+    try{
+      // 1) update bunker totals UI (percent)
+      updateBunkerTotalsUI();
+
+      // 2) compute total seconds (from layer seconds) per bunker and start/reset countdowns
+      for(let m=0;m<6;m++){
+        const secs = Math.max(0, Math.floor(computeTotalBunkerSeconds(m) || 0));
+        if(secs > 0){
+          startOrResetTotalCountdown(m, secs);
+        } else {
+          clearTotalCountdown(m);
+        }
+      }
+    } catch(err){
+      console.error('Error in bunker totals / countdown updates:', err);
+    }
+  }
+
+  // install wrapper
+  window.calculateBlended = wrappedCalculateBlended;
+
+  // run initial update now if the page already called calculateBlended earlier
+  try{ wrappedCalculateBlended(); } catch(e){}
+
+  // also hook into attachAutoUpdate events: whenever a percentage input or flow-input changes they call calculateBlended()
+  // no extra wiring required as we replaced calculateBlended itself.
+
+  // cleanup on unload (optional)
+  window.addEventListener('beforeunload', function(){
+    for(let i=0;i<totalCountdowns.length;i++) if(totalCountdowns[i].intervalId) clearInterval(totalCountdowns[i].intervalId);
+  });
+})();
+
 </script>
 
 <script>
@@ -1905,7 +2364,265 @@ window.savePayload = savePayload;
   console.log('[coal-tooltip] improved tooltip active');
 })();
 
+// ---------- Live countdown manager (paste into your script) ----------
+(function(){
+  if(window.__liveCountdownManager) return;
+  window.__liveCountdownManager = true;
+
+  const COUNT = 6; // number of bunkers
+  const live = new Array(COUNT).fill(null).map(()=>({
+    intervalId: null,
+    remaining: 0,
+    lastSet: 0
+  }));
+
+  function formatHMS_local(sec){
+    // reuse your existing formatHMS if present
+    if(typeof formatHMS === 'function') return formatHMS(sec);
+    sec = Math.max(0, Math.floor(sec||0));
+    const hrs = Math.floor(sec/3600);
+    const mins = Math.floor((sec%3600)/60);
+    const s = sec % 60;
+    return `${String(hrs).padStart(2,'0')}:${String(mins).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+
+  function updateDisplay(b){
+    const el = document.getElementById(`timeToEmpty${b}`);
+    if(!el) return;
+    if(live[b].remaining > 0){
+      el.value = formatHMS_local(live[b].remaining);
+      el.dataset.seconds = String(Math.max(0, Math.floor(live[b].remaining)));
+    } else {
+      el.value = '--';
+      el.dataset.seconds = '0';
+    }
+  }
+
+  function clearBunker(b){
+    if(live[b].intervalId){ clearInterval(live[b].intervalId); live[b].intervalId = null; }
+    live[b].remaining = 0;
+    live[b].lastSet = 0;
+    updateDisplay(b);
+  }
+
+  function setLiveBunkerSeconds(b, seconds){
+    b = Number(b);
+    if(Number.isNaN(b) || b < 0 || b >= COUNT) return;
+    const secs = Math.max(0, Math.floor(Number(seconds) || 0));
+    // if zero, clear
+    if(secs <= 0){ clearBunker(b); return; }
+
+    // If there's already an interval, replace remaining with new secs (reset)
+    if(live[b].intervalId){
+      live[b].remaining = secs;
+      live[b].lastSet = secs;
+      updateDisplay(b);
+      return;
+    }
+
+    // start new interval
+    live[b].remaining = secs;
+    live[b].lastSet = secs;
+    updateDisplay(b);
+    live[b].intervalId = setInterval(()=>{
+      live[b].remaining = Math.max(0, live[b].remaining - 1);
+      if(live[b].remaining <= 0){
+        clearBunker(b);
+      } else {
+        updateDisplay(b);
+      }
+    }, 1000);
+  }
+
+  // expose globally
+  window.setLiveBunkerSeconds = setLiveBunkerSeconds;
+  window.clearLiveBunker = clearBunker;
+  window.clearAllLiveBunkers = function(){ for(let i=0;i<COUNT;i++) clearBunker(i); };
+
+  // auto-init: if there are prefilled dataset.seconds on page, start them
+  document.addEventListener('DOMContentLoaded', function(){
+    for(let i=0;i<COUNT;i++){
+      const el = document.getElementById(`timeToEmpty${i}`);
+      const secs = el ? Number(el.dataset.seconds || el.getAttribute('data-seconds') || 0) : 0;
+      if(secs > 0) setLiveBunkerSeconds(i, secs);
+    }
+  });
+})();
+
 </script>
+<!-- Paste this block after your other scripts (once) -->
+
+<!-- <script>
+(function(){
+  if(window.__bunkerOverlayTipPatch_v2) return;
+  window.__bunkerOverlayTipPatch_v2 = true;
+
+  function ensureTopOverlay(){
+    const layout = document.querySelector('.diagram-in-grid .layout');
+    if(!layout) return null;
+    let overlay = layout.querySelector('.top-overlay');
+    if(!overlay){
+      overlay = document.createElement('div');
+      overlay.className = 'top-overlay';
+      layout.insertBefore(overlay, layout.firstChild);
+    }
+    return { layout, overlay };
+  }
+
+  function createOrSyncOverlayButtons(){
+    const res = ensureTopOverlay();
+    if(!res) return;
+    const { layout, overlay } = res;
+
+    const arrows = Array.from(layout.querySelectorAll('.arrow'));
+    const existing = Array.from(overlay.querySelectorAll('.add-coal-overlay'));
+
+    // Remove orphaned buttons
+    existing.forEach(btn=>{
+      const idx = Number(btn.dataset.bunker);
+      if(Number.isNaN(idx) || idx < 0 || idx >= arrows.length) btn.remove();
+    });
+
+    // Ensure one button per arrow
+    arrows.forEach((arrow, index) => {
+      let btn = overlay.querySelector(`.add-coal-overlay[data-bunker="${index}"]`);
+      if(!btn){
+        btn = document.createElement('button');
+        btn.className = 'add-coal-overlay';
+        btn.dataset.bunker = String(index);
+        btn.setAttribute('aria-label', `Add coal to bunker ${index+1}`);
+        btn.innerText = '+';
+        btn.addEventListener('click', function(ev){
+          ev.stopPropagation();
+          if(typeof window.openCoalPopup === 'function'){
+            window.openCoalPopup(index);
+          } else {
+            console.warn('openCoalPopup not found for add-coal-overlay');
+          }
+        });
+        overlay.appendChild(btn);
+      }
+    });
+
+    // Position them
+    positionOverlayButtons();
+  }
+
+  function rectsIntersect(a,b){
+    return !(b.left >= a.right || b.right <= a.left || b.top >= a.bottom || b.bottom <= a.top);
+  }
+
+  function positionOverlayButtons(){
+    const res = ensureTopOverlay();
+    if(!res) return;
+    const { layout, overlay } = res;
+    const layoutRect = layout.getBoundingClientRect();
+    const arrows = Array.from(layout.querySelectorAll('.arrow'));
+    const buttons = Array.from(overlay.querySelectorAll('.add-coal-overlay'));
+    const rects = Array.from(document.querySelectorAll('.bunker svg rect'));
+    const rectBoxes = rects.map(r => r.getBoundingClientRect());
+    const rootStyle = getComputedStyle(document.documentElement);
+    const arrowHeadSize = parseFloat(rootStyle.getPropertyValue('--arrow-head-size')) || 10;
+
+    arrows.forEach((arrow, idx) => {
+      const btn = buttons.find(b=>Number(b.dataset.bunker) === idx);
+      if(!btn) return;
+      const arrowRect = arrow.getBoundingClientRect();
+      const tipY = (arrowRect.top - layoutRect.top) + arrowRect.height + arrowHeadSize;
+      const tipX = (arrowRect.left - layoutRect.left) + (arrowRect.width / 2);
+
+      // Default: put button slightly below the tip (8px)
+      let desiredTop = tipY + 8;
+      let attempts = 0;
+      const maxAttempts = 8;
+      const stepUp = 10;
+      let overlapped = false;
+
+      // Apply left/top only (do NOT write transform here — CSS controls transform)
+      btn.style.left = `${tipX}px`;
+      btn.style.top = `${desiredTop}px`;
+
+      do {
+        // write left/top and measure; transform is left to CSS
+        btn.style.left = `${tipX}px`;
+        btn.style.top = `${desiredTop}px`;
+
+        const btnBox = btn.getBoundingClientRect();
+        overlapped = rectBoxes.some(rBox => rectsIntersect(btnBox, rBox));
+        if(overlapped){
+          desiredTop -= stepUp; // move up to avoid overlap
+        }
+        attempts++;
+      } while(overlapped && attempts < maxAttempts);
+
+      // clamp inside layout
+      const minTop = 8;
+      const maxTop = layoutRect.height - 8;
+      const finalTop = Math.max(minTop, Math.min(maxTop, desiredTop));
+      btn.style.top = `${finalTop}px`;
+    });
+  }
+
+  function adjustHeights(){
+    const navbar = document.querySelector('.navbar');
+    const inputSec = document.querySelector('.input-section');
+    const mainContainer = document.querySelector('.main-container') || document.querySelector('.mills-grid')?.parentElement;
+    const mills = document.querySelector('.mills-grid');
+
+    const navH = navbar ? navbar.getBoundingClientRect().height : (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--navbar-height')) || 65);
+    const inputH = inputSec ? inputSec.getBoundingClientRect().height : 0;
+    const reserved = 8;
+
+    const available = Math.max(200, window.innerHeight - navH - inputH - reserved);
+
+    if(mainContainer){
+      mainContainer.style.height = available + 'px';
+      mainContainer.style.overflow = 'hidden';
+      mainContainer.style.boxSizing = 'border-box';
+    }
+
+    if(mills){
+      mills.style.height = '100%';
+      mills.style.maxHeight = '100%';
+      mills.style.overflow = 'auto';
+      mills.style.boxSizing = 'border-box';
+      mills.style.paddingBottom = '8px';
+    }
+  }
+
+  function refreshOverlayAndHeights(){
+    createOrSyncOverlayButtons();
+    setTimeout(()=>{ positionOverlayButtons(); }, 50);
+    adjustHeights();
+  }
+
+  // Wrap updateBunkerColors if present
+  if(typeof window.updateBunkerColors === 'function' && !window.__wrappedUpdateBunkerColorsForTip_v2){
+    window.__wrappedUpdateBunkerColorsForTip_v2 = true;
+    const orig = window.updateBunkerColors;
+    window.updateBunkerColors = function(...args){
+      try{ orig.apply(this,args); }catch(e){ console.error(e); }
+      setTimeout(refreshOverlayAndHeights, 60);
+    };
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    refreshOverlayAndHeights();
+    setTimeout(refreshOverlayAndHeights, 150);
+  });
+
+  let resizeTimer = null;
+  window.addEventListener('resize', function(){
+    if(resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(refreshOverlayAndHeights, 80);
+  });
+  window.addEventListener('orientationchange', function(){ setTimeout(refreshOverlayAndHeights, 120); });
+
+  // expose for debugging
+  window.__refreshBunkerOverlay = refreshOverlayAndHeights;
+})();
+</script> -->
+
 
 
 </body>
