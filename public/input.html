@@ -3176,357 +3176,412 @@ function attachToRects(){
 })();
 </script>
 <script>
-/*
-  Bunker total sync + live percent drain
-  - Matches your markup: .total-inputs[data-mill="X"], .percentage-input[data-mill="X"], .flow-input[data-mill="X"], #bunkerCapacity
-  - Adds stable ids bunkerTotal0..bunkerTotal5 for total inputs (attaches to existing .total-inputs if present)
-  - Exposes:
-      startBunkerDrain(bIndex, seconds)
-      stopBunkerDrain(bIndex)
-      computeSecondsAndStartAll()  // uses formula and starts timers for all
+/* Robust live bunker timer + percent drain (fixed selector & resilience)
+   - Place this near end of body (after DOM & your markup).
+   - Works with:
+       .percentage-input[data-mill="X"]   (per-row % inputs or elements)
+       .flow-input[data-mill="X"]         (bunker flow TPH inputs)  -- IMPORTANT: totals/timers must NOT be selected as flow
+       .total-inputs[data-mill="X"]       (bunker total display)
+       #bunkerCapacity                     (single bunker capacity input)
+       #nextTimer0..#nextTimer5           (timer display inputs) - created if missing
+   - Exposes:
+       window.startBunkerTimer(index, seconds)
+       window.stopBunkerTimer(index)
+       window.computeAllAndStart()
 */
-
 (function(){
   'use strict';
-  if(window.__bunkerPercentDrain) return;
-  window.__bunkerPercentDrain = true;
+  if(window.__bunkerManagerV2) return;
+  window.__bunkerManagerV2 = true;
 
   const BUNKER_COUNT = 6;
-  const NUM_ROWS = (typeof NUM_COAL_ROWS !== 'undefined') ? Number(NUM_COAL_ROWS) : (window.NUM_COAL_ROWS || 5);
 
-  // helper parsers/formatters
-  const parseNum = v => {
+  // ---------- small helpers ----------
+  const safeParse = v => {
     if(v == null) return 0;
     let s = String(v).trim();
     if(s === '') return 0;
-    if(s.endsWith('%')) s = s.slice(0,-1);
-    const n = parseFloat(s);
+    if(s.endsWith('%')) s = s.slice(0, -1);
+    const n = Number.parseFloat(s);
     return Number.isFinite(n) ? n : 0;
   };
-  const fmtPct = n => (Number(n||0)).toFixed(2) + '%';
+  const fmtPct = n => (Number(n || 0)).toFixed(2) + '%';
+  const pad2 = n => String(n).padStart(2, '0');
+  const formatHMS = seconds => {
+    const s = Math.max(0, Math.floor(Number(seconds) || 0));
+    const hrs = Math.floor(s / 3600);
+    const mins = Math.floor((s % 3600) / 60);
+    const secs = s % 60;
+    return `${pad2(hrs)}:${pad2(mins)}:${pad2(secs)}`;
+  };
 
-  // internal state per bunker for draining
-  const drains = new Array(BUNKER_COUNT).fill(null).map(()=>({
+  // ---------- element helpers (stricter selectors) ----------
+  function getTimerEl(i){
+    return document.getElementById('nextTimer' + i) || document.querySelector(`.timers-input[data-mill="${i}"]`);
+  }
+  function ensureTimerEl(i){
+    let el = getTimerEl(i);
+    if(el) return el;
+    el = document.createElement('input');
+    el.type = 'text';
+    el.id = 'nextTimer' + i;
+    el.className = 'timers-input';
+    el.style.display = 'none';
+    document.body.appendChild(el);
+    return el;
+  }
+  // total inputs are explicitly .total-inputs
+  function getTotalEl(i){
+    return document.querySelector(`.total-inputs[data-mill="${i}"]`) || document.getElementById('bunkerTotal' + i);
+  }
+  function ensureTotalEl(i){
+    let el = getTotalEl(i);
+    if(el) {
+      if(!el.id) el.id = 'bunkerTotal' + i;
+      return el;
+    }
+    const container = document.querySelector('.mills-grid') || document.querySelector('.main-container') || document.body;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'mill';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'flow-input total-inputs';
+    input.setAttribute('data-mill', String(i));
+    input.id = 'bunkerTotal' + i;
+    input.placeholder = 'TPH';
+    wrapper.appendChild(input);
+    container.appendChild(wrapper);
+    return input;
+  }
+  // row elements (may be inputs or other elements)
+  function getRowEls(i){
+    return Array.from(document.querySelectorAll(`.percentage-input[data-mill="${i}"]`));
+  }
+  // IMPORTANT: pick the flow (TPH) input but exclude .total-inputs and .timers-input
+  function getFlowEl(i){
+    return document.querySelector(`.flow-input[data-mill="${i}"]:not(.total-inputs):not(.timers-input)`);
+  }
+  function getCapacityEl(){
+    return document.getElementById('bunkerCapacity');
+  }
+
+  // ---------- state ----------
+  const bunkers = new Array(BUNKER_COUNT).fill(null).map(()=>({
     intervalId: null,
-    initialTotal: 0,       // percent (0..100)
-    initialRowVals: [],    // [{el, origVal}]
     initialSeconds: 0,
-    remaining: 0
+    remaining: 0,
+    initialTotal: 0,
+    initialRowVals: [] // [{el, origVal}]
   }));
 
-  // ensure each bunker has a target total input with id bunkerTotal{i}
-  function ensureBunkerTotalInputs(){
-    for(let i=0;i<BUNKER_COUNT;i++){
-      let el = document.querySelector(`.total-inputs[data-mill="${i}"]`);
-      if(el){
-        // attach id if not present
-        if(!el.id) el.id = 'bunkerTotal' + i;
-      } else {
-        // if not present, create a visible input and append near the mills-grid if possible
-        const container = document.querySelector('.mills-grid') || document.querySelector('.main-container') || document.body;
-        const wrapper = document.createElement('div');
-        wrapper.className = 'mill';
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'flow-input total-inputs';
-        input.setAttribute('data-mill', String(i));
-        input.placeholder = 'TPH';
-        input.id = 'bunkerTotal' + i;
-        wrapper.appendChild(input);
-        container.appendChild(wrapper);
-        el = input;
-      }
+  // ---------- core functions ----------
+  function readValueFromEl(el){
+    if(!el) return 0;
+    // if it's an input/textarea/select use .value else fallback to textContent
+    try {
+      if('value' in el) return safeParse(el.value || el.dataset.percent || '');
+    } catch(e){}
+    try { return safeParse(el.textContent || el.innerText || ''); } catch(e){ return 0; }
+  }
+
+  function writeValueToEl(el, valStr){
+    if(!el) return;
+    try {
+      if('value' in el) { el.value = valStr; return; }
+    } catch(e){}
+    try { el.textContent = valStr; } catch(e){}
+  }
+
+  function captureBreakdown(i){
+    const rows = getRowEls(i);
+    const vals = rows.map(el => ({ el, origVal: readValueFromEl(el) }));
+    let total = vals.reduce((s, r)=> s + (Number(r.origVal)||0), 0);
+    if(total <= 0){
+      const totEl = getTotalEl(i);
+      if(totEl) total = readValueFromEl(totEl);
     }
+    total = Math.max(0, Math.min(100, total));
+    return { vals, total };
   }
 
-  // compute sum of percentage rows for bunker
-  function computeRowSum(bIndex){
-    let sum = 0;
-    const rows = document.querySelectorAll(`.percentage-input[data-mill="${bIndex}"]`);
-    rows.forEach(r => {
-      sum += parseNum(r.value || r.dataset.percent || '');
-    });
-    // clamp
-    if(sum < 0) sum = 0;
-    if(sum > 100) sum = 100;
-    return sum;
-  }
-
-  // update bunker total UI from row inputs (call when rows change)
-  function updateBunkerTotalFromRows(bIndex){
-    const totalEl = document.getElementById('bunkerTotal' + bIndex) || document.querySelector(`.total-inputs[data-mill="${bIndex}"]`);
-    if(!totalEl) return;
-    const sum = computeRowSum(bIndex);
-    totalEl.value = fmtPct(sum);
-    totalEl.dataset.percent = String(Number(sum).toFixed(2));
-  }
-
-  // attach listeners to percentage inputs to update totals live
-  function wireRowInputs(){
-    document.querySelectorAll('.percentage-input').forEach(inp => {
-      if(inp.__bpd_wired) return;
-      inp.__bpd_wired = true;
-      inp.addEventListener('input', function(){
-        const b = this.getAttribute('data-mill');
-        if(b === null) {
-          // fallback: update all
-          for(let i=0;i<BUNKER_COUNT;i++) updateBunkerTotalFromRows(i);
-        } else {
-          updateBunkerTotalFromRows(Number(b));
-        }
-        // if a drain is running for the bunker, restart sync with the new totals
-        if(this && this.getAttribute('data-mill') !== null){
-          const bi = Number(this.getAttribute('data-mill'));
-          if(drains[bi].intervalId){
-            // restart drain with remaining seconds but updated initial breakdown
-            restartDrainWithCurrentValues(bi);
-          }
-        }
-      });
-      inp.addEventListener('change', () => inp.dispatchEvent(new Event('input', {bubbles:true})));
-    });
-  }
-
-  // helper to read bunker capacity and flow for a bunker (same formula inputs)
-  function getBunkerCapacity(){
-    const el = document.getElementById('bunkerCapacity');
-    if(!el) return 0;
-    return parseNum(el.value);
-  }
-  function getFlowForBunker(bIndex){
-    const el = document.querySelector(`.flow-input[data-mill="${bIndex}"]`);
-    if(!el) return 0;
-    return parseNum(el.value);
-  }
-
-  // compute seconds from formula: seconds = (totalPct/100 * bunkerCapacity) / flow * 3600
-  function computeSecondsForBunker(bIndex){
-    const totalPct = computeRowSum(bIndex);
-    const bunkerCap = getBunkerCapacity();
-    const flow = getFlowForBunker(bIndex);
+  function computeSecondsFromFormula(i){
+    const capEl = getCapacityEl();
+    const bunkerCap = capEl ? readValueFromEl(capEl) : 0;
+    const flowEl = getFlowEl(i);
+    const flow = flowEl ? readValueFromEl(flowEl) : 0;
+    const totalPct = (() => {
+      const rows = getRowEls(i);
+      if(rows.length){
+        return rows.reduce((s, el) => s + readValueFromEl(el), 0);
+      }
+      const totEl = getTotalEl(i);
+      return totEl ? readValueFromEl(totEl) : 0;
+    })();
     if(totalPct <= 0 || bunkerCap <= 0 || flow <= 0) return 0;
     const hours = (totalPct / 100) * bunkerCap / flow;
     return Math.max(0, Math.floor(hours * 3600));
   }
 
-  // internal: captures current row breakdown and sets drain.initialRowVals & initialTotal
-  function captureInitialBreakdown(bIndex){
-    const rows = Array.from(document.querySelectorAll(`.percentage-input[data-mill="${bIndex}"]`));
-    const vals = rows.map(el => ({ el, origVal: parseNum(el.value) }));
-    let total = vals.reduce((s,v)=> s + (Number(v.origVal)||0), 0);
-    // fallback to total-inputs if rows empty
-    if(total <= 0){
-      const totEl = document.getElementById('bunkerTotal' + bIndex) || document.querySelector(`.total-inputs[data-mill="${bIndex}"]`);
-      if(totEl) total = parseNum(totEl.value || totEl.dataset.percent || '');
+  function updateTimerUI(i){
+    try{
+      const el = ensureTimerEl(i);
+      const state = bunkers[i];
+      const rem = state.remaining || 0;
+      if(rem > 0){
+        writeValueToEl(el, formatHMS(rem));
+        el.dataset.seconds = String(Math.max(0, Math.floor(rem)));
+      } else {
+        writeValueToEl(el, '');
+        el.dataset.seconds = '0';
+      }
+    }catch(e){
+      console.error('updateTimerUI error', e);
     }
-    if(total < 0) total = 0;
-    if(total > 100) total = 100;
-    return { vals, total };
   }
 
-  // start drain for a bunker: reduces bunker total & row inputs linearly over specified seconds
-  function startBunkerDrain(bIndex, seconds){
-    bIndex = Number(bIndex);
-    if(isNaN(bIndex) || bIndex < 0 || bIndex >= BUNKER_COUNT) return;
-    const d = drains[bIndex];
+  function startBunker(i, fullSeconds){
+    try {
+      i = Number(i);
+      if(!Number.isFinite(i) || i < 0 || i >= BUNKER_COUNT) return;
+      const state = bunkers[i];
 
-    // stop any previous drain cleanly
-    if(d.intervalId){ clearInterval(d.intervalId); d.intervalId = null; }
+      if(state.intervalId){ clearInterval(state.intervalId); state.intervalId = null; }
 
-    // capture current breakdown
-    const capture = captureInitialBreakdown(bIndex);
-    if(!capture || capture.total <= 0 || seconds <= 0){
-      // nothing meaningful to drain
-      // But still set total to computed sum (in case)
-      updateBunkerTotalFromRows(bIndex);
-      return;
-    }
+      const secs = Math.max(0, Math.floor(Number(fullSeconds) || 0));
+      if(secs <= 0){ stopBunker(i); return; }
 
-    d.initialRowVals = capture.vals;
-    d.initialTotal = capture.total;
-    d.initialSeconds = Math.max(1, Math.floor(Number(seconds) || 0));
-    d.remaining = d.initialSeconds;
+      const cb = captureBreakdown(i);
+      if(!cb || cb.total <= 0){
+        const totEl = ensureTotalEl(i);
+        if(totEl) writeValueToEl(totEl, fmtPct(cb.total));
+        return;
+      }
 
-    // update UI initial state
-    const totalEl = document.getElementById('bunkerTotal' + bIndex) || document.querySelector(`.total-inputs[data-mill="${bIndex}"]`);
-    if(totalEl){
-      totalEl.value = fmtPct(d.initialTotal);
-      totalEl.dataset.percent = String(Number(d.initialTotal).toFixed(2));
-    }
+      state.initialRowVals = cb.vals;
+      state.initialTotal = Math.max(0, Math.min(100, cb.total));
+      state.initialSeconds = secs;
+      state.remaining = secs;
 
-    // store initial total on dataset for convenience
-    const timerEl = document.getElementById('nextTimer' + bIndex);
-    if(timerEl) timerEl.dataset.fullSeconds = String(d.initialSeconds);
+      const tEl = ensureTimerEl(i);
+      tEl.dataset.fullSeconds = String(state.initialSeconds);
 
-    // tick every second
-    d.intervalId = setInterval(() => {
-      d.remaining = Math.max(0, d.remaining - 1);
-      const ratio = (d.remaining <= 0) ? 0 : (d.remaining / d.initialSeconds);
-      const remainingTotal = d.initialTotal * ratio;
-
-      // update total input
+      const totalEl = ensureTotalEl(i);
       if(totalEl){
-        totalEl.value = fmtPct(remainingTotal);
-        totalEl.dataset.percent = String(Number(remainingTotal).toFixed(2));
+        writeValueToEl(totalEl, fmtPct(state.initialTotal));
+        totalEl.dataset.percent = String(Number(state.initialTotal).toFixed(2));
       }
 
-      // update rows proportionally
-      if(d.initialTotal > 0){
-        d.initialRowVals.forEach(item => {
-          const orig = Number(item.origVal) || 0;
-          const newv = orig * ratio;
-          if(newv <= 0.0001) item.el.value = '';
-          else item.el.value = Number(newv).toFixed(2);
-        });
-      }
+      updateTimerUI(i);
 
-      // if completed, cleanup
-      if(d.remaining <= 0){
-        clearInterval(d.intervalId);
-        d.intervalId = null;
-        d.initialRowVals = [];
-        d.initialTotal = 0;
-        d.initialSeconds = 0;
-        d.remaining = 0;
-        // ensure final zeroed values
-        if(totalEl){ totalEl.value = fmtPct(0); totalEl.dataset.percent = '0'; }
-        const rowsNow = document.querySelectorAll(`.percentage-input[data-mill="${bIndex}"]`);
-        rowsNow.forEach(r => r.value = '');
-        if(timerEl) delete timerEl.dataset.fullSeconds;
-      }
+      state.intervalId = setInterval(() => {
+        try{
+          state.remaining = Math.max(0, state.remaining - 1);
+          const initS = Math.max(1, state.initialSeconds || 1);
+          const ratio = state.initialTotal > 0 ? (state.remaining <= 0 ? 0 : (state.remaining / initS)) : 0;
+          const remainingTotal = state.initialTotal * ratio;
 
-    }, 1000);
-  }
+          const totalEl2 = ensureTotalEl(i);
+          if(totalEl2){
+            writeValueToEl(totalEl2, fmtPct(remainingTotal));
+            totalEl2.dataset.percent = String(Number(remainingTotal).toFixed(2));
+          }
 
-  function stopBunkerDrain(bIndex){
-    bIndex = Number(bIndex);
-    if(isNaN(bIndex) || bIndex < 0 || bIndex >= BUNKER_COUNT) return;
-    const d = drains[bIndex];
-    if(d.intervalId){ clearInterval(d.intervalId); d.intervalId = null; }
-    d.initialRowVals = [];
-    d.initialTotal = 0;
-    d.initialSeconds = 0;
-    d.remaining = 0;
-  }
+          if(state.initialTotal > 0 && Array.isArray(state.initialRowVals)){
+            state.initialRowVals.forEach(item => {
+              try{
+                const orig = Number(item.origVal) || 0;
+                const newVal = orig * ratio;
+                if(newVal <= 0.0001) writeValueToEl(item.el, '');
+                else writeValueToEl(item.el, Number(newVal).toFixed(2));
+              }catch(_){} // ignore per-item errors
+            });
+          }
 
-  // If rows change while draining we restart the drain using the current remaining seconds but new breakdown
-  function restartDrainWithCurrentValues(bIndex){
-    const d = drains[bIndex];
-    if(!d || d.remaining <= 0) return;
-    // capture new breakdown
-    const capture = captureInitialBreakdown(bIndex);
-    // restart with remaining seconds but using new total/breakdown
-    stopBunkerDrain(bIndex);
-    // set initial values from capture and start draining for the remaining time
-    if(capture.total > 0){
-      // start with d.remaining seconds and new breakdown
-      // but to keep proportions consistent we treat the current remaining time as the "new full" so ratio mapping works:
-      const newFull = d.remaining; // seconds left will become the "duration" to drain the new total to zero
-      // set artificially initialSeconds = newFull and remaining = newFull so it drains to zero across newFull
-      const temp = { vals: capture.vals, total: capture.total, seconds: newFull };
-      // apply directly
-      drains[bIndex].initialRowVals = temp.vals;
-      drains[bIndex].initialTotal = temp.total;
-      drains[bIndex].initialSeconds = temp.seconds;
-      drains[bIndex].remaining = temp.seconds;
-      // start ticking
-      drains[bIndex].intervalId = setInterval(() => {
-        const dd = drains[bIndex];
-        dd.remaining = Math.max(0, dd.remaining - 1);
-        const ratio = (dd.remaining <= 0) ? 0 : (dd.remaining / dd.initialSeconds);
-        const remainingTotal = dd.initialTotal * ratio;
-        const totalEl = document.getElementById('bunkerTotal' + bIndex) || document.querySelector(`.total-inputs[data-mill="${bIndex}"]`);
-        if(totalEl) { totalEl.value = fmtPct(remainingTotal); totalEl.dataset.percent = String(Number(remainingTotal).toFixed(2)); }
-        if(dd.initialTotal > 0){
-          dd.initialRowVals.forEach(item => {
-            const orig = Number(item.origVal) || 0;
-            const newv = orig * ratio;
-            if(newv <= 0.0001) item.el.value = '';
-            else item.el.value = Number(newv).toFixed(2);
-          });
-        }
-        if(dd.remaining <= 0){
-          clearInterval(dd.intervalId); dd.intervalId = null; dd.initialRowVals = []; dd.initialTotal = 0; dd.initialSeconds = 0; dd.remaining = 0;
-          if(totalEl) { totalEl.value = fmtPct(0); totalEl.dataset.percent = '0'; }
-          document.querySelectorAll(`.percentage-input[data-mill="${bIndex}"]`).forEach(r => r.value = '');
+          updateTimerUI(i);
+
+          if(state.remaining <= 0){
+            clearInterval(state.intervalId);
+            state.intervalId = null;
+            state.initialRowVals = [];
+            state.initialTotal = 0;
+            state.initialSeconds = 0;
+            state.remaining = 0;
+            if(totalEl2){ writeValueToEl(totalEl2, fmtPct(0)); totalEl2.dataset.percent = '0'; }
+            getRowEls(i).forEach(r => { try { writeValueToEl(r, ''); } catch(_){} });
+            const tEl2 = getTimerEl(i);
+            if(tEl2) delete tEl2.dataset.fullSeconds;
+            updateTimerUI(i);
+          }
+        } catch(err){
+          console.error('bunker tick error for', i, err);
+          try{ clearInterval(state.intervalId); }catch(e){}
+          state.intervalId = null;
         }
       }, 1000);
+
+    } catch(e){
+      console.error('startBunker error', e);
     }
   }
 
-  // computeSeconds & start for all: convenience helper using same formula
-  function computeSecondsAndStartAll(){
-    for(let i=0;i<BUNKER_COUNT;i++){
-      const secs = computeSecondsForBunker(i);
-      if(secs > 0){
-        // also update the bunker total before starting
-        updateBunkerTotalFromRows(i);
-        startBunkerDrain(i, secs);
-      } else {
-        // ensure total matches rows if no timer
-        updateBunkerTotalFromRows(i);
-        stopBunkerDrain(i);
-      }
+  function stopBunker(i){
+    try{
+      i = Number(i);
+      if(!Number.isFinite(i) || i < 0 || i >= BUNKER_COUNT) return;
+      const state = bunkers[i];
+      if(state && state.intervalId){ clearInterval(state.intervalId); state.intervalId = null; }
+      state.initialRowVals = [];
+      state.initialTotal = 0;
+      state.initialSeconds = 0;
+      state.remaining = 0;
+      const tEl = getTimerEl(i);
+      if(tEl) { writeValueToEl(tEl, ''); tEl.dataset.seconds = '0'; delete tEl.dataset.fullSeconds; }
+      updateTimerUI(i);
+    } catch(e){ console.error('stopBunker error', e); }
+  }
+
+  // when rows change while draining: keep remaining as-is, treat remaining as fullSeconds for new breakdown
+  function refreshDrainWithRemaining(i){
+    try{
+      i = Number(i);
+      if(!Number.isFinite(i) || i < 0 || i >= BUNKER_COUNT) return;
+      const state = bunkers[i];
+      if(!state || !state.intervalId || state.remaining <= 0) return;
+      const rem = state.remaining;
+      const cb = captureBreakdown(i);
+      if(!cb || cb.total <= 0) return;
+
+      // Set new breakdown but preserve remaining seconds (do NOT reset to full again)
+      // We'll treat remaining as the duration over which this new total should drain to 0
+      state.initialRowVals = cb.vals;
+      state.initialTotal = Math.max(0, Math.min(100, cb.total));
+      // set initialSeconds to remaining but DO NOT alter remaining (so it continues from current remaining)
+      state.initialSeconds = Math.max(1, Math.floor(rem));
+      // keep state.remaining unchanged (so ratio uses remaining / initialSeconds)
+      // update dataset and UI
+      const tEl = ensureTimerEl(i);
+      if(tEl) tEl.dataset.fullSeconds = String(state.initialSeconds);
+      const totalEl = ensureTotalEl(i);
+      if(totalEl) { writeValueToEl(totalEl, fmtPct(state.initialTotal)); totalEl.dataset.percent = String(Number(state.initialTotal).toFixed(2)); }
+      updateTimerUI(i);
+
+    } catch(e){
+      console.error('refreshDrainWithRemaining error', e);
     }
   }
 
-  // attach flows and bunkerCapacity change to re-calc seconds if desired (optional)
-  function wireFlowAndCapacity(){
-    document.querySelectorAll('.flow-input').forEach(inp => {
-      if(inp.__bpd_wired) return;
-      inp.__bpd_wired = true;
-      inp.addEventListener('input', () => {
-        // recompute seconds & restart if a drain is already running for that bunker
-        const b = inp.getAttribute('data-mill');
-        if(b !== null){
-          const bi = Number(b);
-          if(drains[bi].intervalId){
-            // restart drain using new computed secs but preserve remaining? we'll stop existing and start with new secs
-            stopBunkerDrain(bi);
-            const secs = computeSecondsForBunker(bi);
-            if(secs > 0) startBunkerDrain(bi, secs);
-          } else {
-            // just update totals
-            updateBunkerTotalFromRows(bi);
+  function computeAndStart(i){
+    try {
+      const secs = computeSecondsFromFormula(i);
+      if(secs > 0) startBunker(i, secs);
+      else stopBunker(i);
+      return secs;
+    } catch(e){ console.error('computeAndStart error', e); return 0; }
+  }
+  function computeAllAndStart(){
+    for(let i=0;i<BUNKER_COUNT;i++) computeAndStart(i);
+  }
+
+  // ---------- wiring (use stricter selectors and avoid totals/timers) ----------
+  function wireRowInputs(){
+    document.querySelectorAll('.percentage-input').forEach(inp => {
+      if(inp.__bunkerManagerWired) return;
+      inp.__bunkerManagerWired = true;
+      inp.addEventListener('input', function(){
+        const b = this.getAttribute('data-mill');
+        if(b === null || b === undefined){
+          for(let i=0;i<BUNKER_COUNT;i++){
+            const totalEl = ensureTotalEl(i);
+            if(totalEl) writeValueToEl(totalEl, fmtPct(captureBreakdown(i).total));
           }
+          return;
+        }
+        const bi = Number(b);
+        const totEl = ensureTotalEl(bi);
+        if(totEl) { writeValueToEl(totEl, fmtPct(captureBreakdown(bi).total)); totEl.dataset.percent = String(Number(captureBreakdown(bi).total).toFixed(2)); }
+        if(bunkers[bi] && bunkers[bi].intervalId) refreshDrainWithRemaining(bi);
+      });
+      inp.addEventListener('change', () => inp.dispatchEvent(new Event('input',{bubbles:true})));
+    });
+  }
+
+  function wireFlowInputs(){
+    // strict: pick flow inputs excluding totals/timers
+    document.querySelectorAll('.flow-input[data-mill]').forEach(inp => {
+      // ignore if it's a total or a timer input
+      if(inp.classList.contains('total-inputs') || inp.classList.contains('timers-input')) return;
+      if(inp.__bunkerManagerWired) return;
+      inp.__bunkerManagerWired = true;
+      inp.addEventListener('input', function(){
+        const b = this.getAttribute('data-mill');
+        if(b === null || b === undefined){
+          computeAllAndStart();
+          return;
+        }
+        const bi = Number(b);
+        if(bunkers[bi] && bunkers[bi].intervalId){
+          const secs = computeSecondsFromFormula(bi);
+          if(secs > 0){
+            stopBunker(bi);
+            startBunker(bi, secs);
+          } else stopBunker(bi);
         } else {
-          computeSecondsAndStartAll();
+          const totEl = ensureTotalEl(bi);
+          if(totEl) writeValueToEl(totEl, fmtPct(captureBreakdown(bi).total));
         }
       });
-      inp.addEventListener('change', ()=>inp.dispatchEvent(new Event('input',{bubbles:true})));
+      inp.addEventListener('change', ()=> inp.dispatchEvent(new Event('input',{bubbles:true})));
     });
+  }
 
-    const cap = document.getElementById('bunkerCapacity');
-    if(cap && !cap.__bpd_wired){
-      cap.__bpd_wired = true;
-      cap.addEventListener('input', computeSecondsAndStartAll);
-      cap.addEventListener('change', computeSecondsAndStartAll);
+  function wireCapacity(){
+    const cap = getCapacityEl();
+    if(!cap) return;
+    if(cap.__bunkerManagerWired) return;
+    cap.__bunkerManagerWired = true;
+    cap.addEventListener('input', computeAllAndStart);
+    cap.addEventListener('change', computeAllAndStart);
+  }
+
+  // ---------- init ----------
+  function init(){
+    for(let i=0;i<BUNKER_COUNT;i++) ensureTimerEl(i);
+    for(let i=0;i<BUNKER_COUNT;i++) ensureTotalEl(i);
+    wireRowInputs();
+    wireFlowInputs();
+    wireCapacity();
+    for(let i=0;i<BUNKER_COUNT;i++){
+      const totEl = ensureTotalEl(i);
+      if(totEl) writeValueToEl(totEl, fmtPct(captureBreakdown(i).total));
     }
   }
 
-  // initialization
-  function init(){
-    ensureBunkerTotalInputs();
-    wireRowInputs();
-    wireFlowAndCapacity();
-    // set totals to current sums initially
-    for(let i=0;i<BUNKER_COUNT;i++) updateBunkerTotalFromRows(i);
-  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  // ---------- public API ----------
+  window.bunkerManager = {
+    startBunker: startBunker,
+    stopBunker: stopBunker,
+    computeAndStart: computeAndStart,
+    computeAllAndStart: computeAllAndStart,
+    captureBreakdown: captureBreakdown,
+    computeSecondsFromFormula: computeSecondsFromFormula,
+    formatHMS: formatHMS
+  };
 
-  // expose helpers globally
-  window.startBunkerDrain = startBunkerDrain;
-  window.stopBunkerDrain = stopBunkerDrain;
-  window.computeSecondsAndStartAll = computeSecondsAndStartAll;
-  window.updateBunkerTotalFromRows = updateBunkerTotalFromRows;
+  window.startBunkerTimer = startBunker;
+  window.stopBunkerTimer = stopBunker;
+  window.computeAllAndStart = computeAllAndStart;
+
+  // cleanup
+  window.addEventListener('beforeunload', () => {
+    for(let i=0;i<BUNKER_COUNT;i++) if(bunkers[i].intervalId) clearInterval(bunkers[i].intervalId);
+  });
 
 })();
 </script>
+
+
 
 
 </body>
