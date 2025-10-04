@@ -1781,13 +1781,17 @@ function saveCoalSelection() {
     if (typeof updateBunkerColors === 'function') updateBunkerColors();
 
     const more = findLastFilledRowForBunker(bunkerIndex);
-    document.getElementById('clearLastBtn').style.display = more ? 'inline-block' : 'none';
-    if (!more) closeCoalPopup();
+    const clearBtn = document.getElementById('clearLastBtn');
+    if (clearBtn) clearBtn.style.display = more ? 'inline-block' : 'none';
+
+    // ALWAYS close the popup after a successful save (fixes the bug you reported)
+    if (typeof closeCoalPopup === 'function') closeCoalPopup();
   } catch (e) {
     console.error('[coal-helper] saveCoalSelection error', e);
     alert('Error saving layer — see console.');
   }
 }
+
 
 
 /* Clear the last (topmost) added layer for a bunker (fixed to clear per-cell hidden inputs) */
