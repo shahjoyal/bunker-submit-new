@@ -34,6 +34,7 @@
     --add-coal-translate-y: -40%;
   }
 
+  /* Global box sizing + font smoothing */
   *, *::before, *::after { box-sizing: border-box; }
 
   html, body {
@@ -51,6 +52,7 @@
 
   /* hide DOM-only helpers */
   #loader, #downloadPDF, .summary-table, #summaryHidden { display: none !important; }
+
 
   /* =========================
      Navbar
@@ -87,6 +89,7 @@
     font-weight: 700;
   }
   .navbar button:hover { background-color: #001cbb; }
+
 
   /* =========================
      Input section (kept in-flow)
@@ -152,6 +155,7 @@
   }
   #saveBtn:active { transform: translateY(1px); }
 
+
   /* =========================
      Main grid & mapping
      ========================= */
@@ -196,7 +200,7 @@
   .mills-grid .cost-input,
   .mills-grid .aft-head,
   .mills-grid .aft,
-  .mills-grid .next-blend-box,
+  .mills-grid .next-blend-boxs,
   .mills-grid .mill.green,
   .mills-grid .mill[readonly] {
     display: none !important;
@@ -240,12 +244,13 @@
 
   /* force display helpers */
   .mills-grid > .mill.show-row { display:flex !important; }
-  .mills-grid > .mill.show-row input.next-blend-box,
+  .mills-grid > .mill.show-row input.next-blend-boxs,
   .mills-grid > .mill.show-row input { display: block !important; width: 100%; box-sizing: border-box; }
 
   /* Inputs styles (shared) */
   .flow-input,
   .timer-input,
+  .next-blend-box,
   .total-input {
     width: 100%;
     max-width: 140px;
@@ -262,6 +267,7 @@
   .total-input[readonly] { background: #fff; color: #111; }
 
   .coal-flow { font-weight:700; color:var(--muted); font-size:14px; padding-left:6px; }
+
 
   /* =========================
      Diagram / Bunkers
@@ -498,12 +504,10 @@
   .mills-grid > .mill.next-timer,
   .mills-grid > .mill.bunker-total { align-items: center; }
 
-</style>
-<!-- ===== Replace previous overlay/fit patches with this single block ===== -->
-<style>
-  :root{
-    --add-coal-translate-y: -10%; /* change to -30%/-20% etc to nudge vertical position */
-  }
+
+  /* =========================
+     Overlay / small fixes (kept separate for clarity)
+     ========================= */
 
   /* Ensure diagram container doesn't clip overlay buttons */
   .diagram-in-grid .layout {
@@ -543,16 +547,15 @@
   }
   .add-coal-overlay:active { transform: translate(-50%, var(--add-coal-translate-y)) scale(.98); }
 
-  /* make mills-grid internally scrollable so rows aren't cut */
-  .mills-grid {
-    /* keep the layout-height set by your JS (or CSS var) and allow internal scrolling */
-    overflow: auto;
-    -webkit-overflow-scrolling: touch;
-  }
+  /* make mills-grid internally scrollable if you prefer (optional)
+     uncomment the next line if you want internal scrolling instead of page scroll:
+  .mills-grid { overflow: auto; -webkit-overflow-scrolling: touch; }
+  */
 
-  /* keep header rows visible */
+  /* keep header rows visible (sticky) if internal scrolling is enabled */
   .mills-grid > .mill.coal-flow,
   .mills-grid > .mill.next-timer,
+  .mills-grid > .next-blend-box,
   .mills-grid > .mill.bunker-total {
     position: sticky;
     top: 0;
@@ -564,217 +567,37 @@
   @media (max-width:700px){ .add-coal-overlay{ width:40px; height:40px; font-size:20px;} }
   @media (max-width:480px){ .add-coal-overlay{ width:36px; height:36px; font-size:18px;} }
 
-  
 </style>
-
-<script>
-(function(){
-  if(window.__bunkerOverlayFix_v3) return;
-  window.__bunkerOverlayFix_v3 = true;
-
-  // ensure top-overlay exists
-  function ensureTopOverlay(){
-    const layout = document.querySelector('.diagram-in-grid .layout');
-    if(!layout) return null;
-    // ensure layout will not clip overlays
-    layout.style.overflow = 'visible';
-    let overlay = layout.querySelector('.top-overlay');
-    if(!overlay){
-      overlay = document.createElement('div');
-      overlay.className = 'top-overlay';
-      // insert as first child so it's positioned relative to layout
-      layout.insertBefore(overlay, layout.firstChild);
-    }
-    return { layout, overlay };
-  }
-
-  // create one overlay button per arrow if missing
-  function createOverlayButtons(){
-    const res = ensureTopOverlay();
-    if(!res) return;
-    const { layout, overlay } = res;
-    const arrows = Array.from(layout.querySelectorAll('.arrow'));
-    // remove any extra buttons whose index is out of range
-    const existing = Array.from(overlay.querySelectorAll('.add-coal-overlay'));
-    existing.forEach(btn=>{
-      const idx = Number(btn.dataset.bunker);
-      if(Number.isNaN(idx) || idx < 0 || idx >= arrows.length) btn.remove();
-    });
-
-    arrows.forEach((arrow, index) => {
-      let btn = overlay.querySelector(`.add-coal-overlay[data-bunker="${index}"]`);
-      if(!btn){
-        btn = document.createElement('button');
-        btn.className = 'add-coal-overlay';
-        btn.dataset.bunker = String(index);
-        btn.setAttribute('aria-label', `Add coal to bunker ${index+1}`);
-        btn.innerText = '+';
-        btn.addEventListener('click', function(ev){
-          ev.stopPropagation();
-          if(typeof window.openCoalPopup === 'function'){
-            window.openCoalPopup(index);
-          } else {
-            console.warn('openCoalPopup not found for add-coal-overlay');
-          }
-        });
-        overlay.appendChild(btn);
-      }
-    });
-  }
-
-  // helper to detect rect collisions
-  function rectsIntersect(a,b){
-    return !(b.left >= a.right || b.right <= a.left || b.top >= a.bottom || b.bottom <= a.top);
-  }
-
-  // position overlay buttons at arrow tips; nudge up to avoid overlapping colored rects
-  function positionOverlayButtons(){
-    const res = ensureTopOverlay();
-    if(!res) return;
-    const { layout, overlay } = res;
-    const layoutRect = layout.getBoundingClientRect();
-    const arrows = Array.from(layout.querySelectorAll('.arrow'));
-    const buttons = Array.from(overlay.querySelectorAll('.add-coal-overlay'));
-    const coloredRects = Array.from(document.querySelectorAll('.bunker svg rect')).filter(r => r.getBoundingClientRect().width > 0 && r.getBoundingClientRect().height > 0);
-    const rectBoxes = coloredRects.map(r => r.getBoundingClientRect());
-    const rootStyle = getComputedStyle(document.documentElement);
-    const arrowHeadSize = parseFloat(rootStyle.getPropertyValue('--arrow-head-size')) || 10;
-
-    arrows.forEach((arrow, idx) => {
-      const btn = overlay.querySelector(`.add-coal-overlay[data-bunker="${idx}"]`);
-      if(!btn) return;
-      const arrowRect = arrow.getBoundingClientRect();
-      const tipY = (arrowRect.top - layoutRect.top) + arrowRect.height + arrowHeadSize;
-      const tipX = (arrowRect.left - layoutRect.left) + (arrowRect.width / 2);
-
-      // default position slightly below tip
-      let desiredTop = tipY + 8;
-      let attempts = 0;
-      const maxAttempts = 8;
-      const stepUp = 10;
-      let overlapped = false;
-
-      // set left/top only; transform is handled by CSS var --add-coal-translate-y
-      btn.style.left = `${tipX}px`;
-      btn.style.top = `${desiredTop}px`;
-
-      do {
-        btn.style.left = `${tipX}px`;
-        btn.style.top = `${desiredTop}px`;
-        const btnBox = btn.getBoundingClientRect();
-        overlapped = rectBoxes.some(rBox => rectsIntersect(btnBox, rBox));
-        if(overlapped){
-          desiredTop -= stepUp; // move up to avoid overlap
-        }
-        attempts++;
-      } while(overlapped && attempts < maxAttempts);
-
-      // clamp inside layout area
-      const minTop = 8;
-      const maxTop = layoutRect.height - 8;
-      const finalTop = Math.max(minTop, Math.min(maxTop, desiredTop));
-      btn.style.top = `${finalTop}px`;
-    });
-  }
-
-  // compute sizes and ensure mills-grid fills available space but scrolls internally
-  function computeSizesAndApply(){
-    const navbar = document.querySelector('.navbar');
-    const inputSec = document.querySelector('.input-section');
-    const navH = navbar ? navbar.getBoundingClientRect().height : 0;
-    const inputH = inputSec ? inputSec.getBoundingClientRect().height : 0;
-    const reserved = 8;
-    const available = Math.max(220, Math.floor(window.innerHeight - navH - inputH - reserved));
-
-    // update CSS vars (px) so CSS clamp calculations become exact
-    document.documentElement.style.setProperty('--input-height', inputH + 'px');
-    document.documentElement.style.setProperty('--available-height', available + 'px');
-
-    // apply to main container and mills-grid
-    const mainContainer = document.querySelector('.main-container') || document.querySelector('.mills-grid')?.parentElement;
-    const mills = document.querySelector('.mills-grid');
-    if(mainContainer){
-      mainContainer.style.height = available + 'px';
-      mainContainer.style.overflow = 'hidden';
-      mainContainer.style.boxSizing = 'border-box';
-    }
-    if(mills){
-      mills.style.height = available + 'px';
-      mills.style.maxHeight = available + 'px';
-      mills.style.overflow = 'auto'; // allow internal scrolling
-      mills.style.boxSizing = 'border-box';
-      mills.style.paddingBottom = '8px';
-    }
-
-    // ensure diagram layout fits
-    const layout = document.querySelector('.diagram-in-grid .layout');
-    if(layout){
-      const target = Math.max(120, available - 40);
-      layout.style.height = target + 'px';
-      layout.style.maxHeight = target + 'px';
-      layout.style.boxSizing = 'border-box';
-      layout.style.overflow = 'visible'; // important: don't clip overlay
-    }
-  }
-
-  function refreshAll(){
-    createOverlayButtons();
-    computeSizesAndApply();
-    setTimeout(positionOverlayButtons, 45);
-  }
-
-  // wrap existing updateBunkerColors if present so overlays reposition after color updates
-  if(typeof window.updateBunkerColors === 'function' && !window.__wrappedUpdateBunkerColorsForTip_v3){
-    window.__wrappedUpdateBunkerColorsForTip_v3 = true;
-    const orig = window.updateBunkerColors;
-    window.updateBunkerColors = function(...args){
-      try{ orig.apply(this,args); }catch(e){ console.error(e); }
-      setTimeout(refreshAll, 80);
-    };
-  }
-
-  window.addEventListener('resize', function(){
-    if(window.__bunkerOverlayFix_resize) clearTimeout(window.__bunkerOverlayFix_resize);
-    window.__bunkerOverlayFix_resize = setTimeout(refreshAll, 90);
-  });
-  window.addEventListener('orientationchange', function(){ setTimeout(refreshAll, 150); });
-
-  document.addEventListener('DOMContentLoaded', function(){
-    refreshAll();
-    // run again after short delay to catch late layout shifts
-    setTimeout(refreshAll, 160);
-  });
-
-  // manual trigger for debugging/tweaks
-  window.__refreshBunkerOverlayAndFit = refreshAll;
-})();
-</script>
-
-
-
-
 
 </head>
 <body>
 
   <!-- Navbar kept in DOM but hidden via CSS -->
-  <div class="navbar">
-    <img src="/public/images/abhitech-logo.png" alt="Company Logo">
-    <h1>COAL BLENDING RATIO</h1>
-    <div class="nav-buttons">
-      <button onclick="window.location.href='/public/coals.html'">Go to Coals Page</button>
-      <button class="logout-btn" onclick="logoutUser()">Logout</button>
-      
+<div class="navbar hidden-dom" aria-hidden="true">
+  <img src="/public/images/abhitech-logo.png" alt="Company Logo">
+  <h1>COAL BLENDING RATIO</h1>
 
-    </div>
+  <div class="nav-buttons">
+    <button onclick="window.location.href='/public/coals.html'">Go to Coals Page</button>
+    <button class="logout-btn" onclick="logoutUser()">Logout</button>
   </div>
+</div>
 
-<div class="input-section">
+<!-- Input / controls section -->
+<div class="input-section" role="region" aria-label="Bunker inputs">
   <label for="bunkerCapacity">Bunker Capacity (tons):</label>
-  <input type="number" id="bunkerCapacity" class="input-box" placeholder="Enter bunker capacity" />
+  <input
+    type="number"
+    id="bunkerCapacity"
+    class="input-box"
+    placeholder="Enter bunker capacity" />
 
   <label for="generation">Generation (MW):</label>
-  <input type="number" id="generation" class="input-box" placeholder="Enter generation value" />
+  <input
+    type="number"
+    id="generation"
+    class="input-box"
+    placeholder="Enter generation value" />
 
   <!-- Submit moved here for consistent placement -->
   <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
@@ -782,285 +605,262 @@
   </div>
 </div>
 
+<!-- Loader & PDF button (kept hidden) -->
+<div id="loader" class="hidden-dom" aria-hidden="true">Loading... please wait</div>
+<button id="downloadPDF" class="icon-btn hidden-dom" title="Download page as PDF" aria-hidden="true">⬇️</button>
 
+<!-- MAIN GRID -->
+<div class="main-container">
+  <div class="mills-grid" id="millsGrid">
+    <!-- header row (kept in DOM but hidden visually) -->
+    <div class="hidden-dom" aria-hidden="true"></div>
+    <div class="mill green hidden-dom" aria-hidden="true">BUNKER 1</div>
+    <div class="mill green hidden-dom" aria-hidden="true">BUNKER 2</div>
+    <div class="mill green hidden-dom" aria-hidden="true">BUNKER 3</div>
+    <div class="mill green hidden-dom" aria-hidden="true">BUNKER 4</div>
+    <div class="mill green hidden-dom" aria-hidden="true">BUNKER 5</div>
+    <div class="mill green hidden-dom" aria-hidden="true">BUNKER 6</div>
+    <div class="mill gcv hidden-dom" aria-hidden="true">GCV(Kcal/kg)</div>
+    <div class="mill cost-head hidden-dom" aria-hidden="true">Cost/MT</div>
 
-  <!-- Visible Submit button (id preserved so your savePayload binds as before) -->
-  <!-- <button id="saveBtn" class="upload-btn">Submit</button> -->
+    <!-- Row 1: Coal name select & % under mills (kept but hidden) -->
+    <div class="mill">
+      <select class="dropdown" id="coalName1">
+        <option value="">Select coal</option>
+      </select>
+    </div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="1" data-mill="0" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="1" data-mill="1" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="1" data-mill="2" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="1" data-mill="3" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="1" data-mill="4" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="1" data-mill="5" placeholder="%"></div>
+    <div class="mill"><input type="text" id="gcvBox1" class="gcv-box" placeholder="GCV"></div>
+    <div class="mill"><input type="text" id="costBox1" class="cost-input" placeholder="Cost/MT"></div>
 
-  <!-- Loader & PDF button (kept hidden) -->
-  <div id="loader">Loading... please wait</div>
-  <button id="downloadPDF" class="icon-btn" title="Download page as PDF">⬇️</button>
+    <!-- Row 2 (hidden) -->
+    <div class="mill">
+      <select class="dropdown" id="coalName2">
+        <option value="">Select coal</option>
+      </select>
+    </div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="2" data-mill="0" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="2" data-mill="1" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="2" data-mill="2" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="2" data-mill="3" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="2" data-mill="4" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="2" data-mill="5" placeholder="%"></div>
+    <div class="mill"><input type="text" id="gcvBox2" class="gcv-box" placeholder="GCV"></div>
+    <div class="mill"><input type="text" id="costBox2" class="cost-input" placeholder="Cost/MT"></div>
 
-  
+    <!-- Row 3 (hidden) -->
+    <div class="mill">
+      <select class="dropdown" id="coalName3">
+        <option value="">Select coal</option>
+      </select>
+    </div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="3" data-mill="0" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="3" data-mill="1" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="3" data-mill="2" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="3" data-mill="3" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="3" data-mill="4" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="3" data-mill="5" placeholder="%"></div>
+    <div class="mill"><input type="text" id="gcvBox3" class="gcv-box" placeholder="GCV"></div>
+    <div class="mill"><input type="text" id="costBox3" class="cost-input" placeholder="Cost/MT"></div>
 
-  <div class="main-container">
-    <div class="mills-grid" id="millsGrid">
-      <!-- header row (kept in DOM but hidden visually) -->
-      <div></div>
-      <div class="mill green">BUNKER 1</div>
-      <div class="mill green">BUNKER 2</div>
-      <div class="mill green">BUNKER 3</div>
-      <div class="mill green">BUNKER 4</div>
-      <div class="mill green">BUNKER 5</div>
-      <div class="mill green">BUNKER 6</div>
-      <div class="mill gcv">GCV(Kcal/kg)</div>
-      <div class="mill cost-head">Cost/MT</div>
+    <!-- Row 4 (hidden) -->
+    <div class="mill">
+      <select class="dropdown" id="coalName4">
+        <option value="">Select coal</option>
+      </select>
+    </div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="4" data-mill="0" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="4" data-mill="1" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="4" data-mill="2" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="4" data-mill="3" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="4" data-mill="4" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="4" data-mill="5" placeholder="%"></div>
+    <div class="mill"><input type="text" id="gcvBox4" class="gcv-box" placeholder="GCV"></div>
+    <div class="mill"><input type="text" id="costBox4" class="cost-input" placeholder="Cost/MT"></div>
 
-      <!-- Row 1: Coal name select & % under mills (kept but hidden) -->
-      <div class="mill">
-        <select class="dropdown" id="coalName1">
-          <option value="">Select coal</option>
-        </select>
-      </div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="1" data-mill="0" placeholder="%"></div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="1" data-mill="1" placeholder="%"></div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="1" data-mill="2" placeholder="%"></div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="1" data-mill="3" placeholder="%"></div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="1" data-mill="4" placeholder="%"></div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="1" data-mill="5" placeholder="%"></div>
-      <div class="mill"><input type="text" id="gcvBox1" class="gcv-box" placeholder="GCV"></div>
-      <div class="mill"><input type="text" id="costBox1" class="cost-input" placeholder="Cost/MT"></div>
+    <!-- Row 5 (hidden) -->
+    <div class="mill">
+      <select class="dropdown" id="coalName5">
+        <option value="">Select coal</option>
+      </select>
+    </div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="5" data-mill="0" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="5" data-mill="1" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="5" data-mill="2" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="5" data-mill="3" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="5" data-mill="4" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="5" data-mill="5" placeholder="%"></div>
+    <div class="mill"><input type="text" id="gcvBox5" class="gcv-box" placeholder="GCV"></div>
+    <div class="mill"><input type="text" id="costBox5" class="cost-input" placeholder="Cost/MT"></div>
 
-      <!-- Row 2 (hidden) -->
-      <div class="mill">
-        <select class="dropdown" id="coalName2">
-          <option value="">Select coal</option>
-        </select>
-      </div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="2" data-mill="0" placeholder="%"></div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="2" data-mill="1" placeholder="%"></div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="2" data-mill="2" placeholder="%"></div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="2" data-mill="3" placeholder="%"></div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="2" data-mill="4" placeholder="%"></div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="2" data-mill="5" placeholder="%"></div>
-      <div class="mill"><input type="text" id="gcvBox2" class="gcv-box" placeholder="GCV"></div>
-      <div class="mill"><input type="text" id="costBox2" class="cost-input" placeholder="Cost/MT"></div>
+    <!-- diagram area (this is visible) -->
+    <div class="hidden-dom" aria-hidden="true"></div>
+    <div class="diagram-in-grid" style="padding:8px;">
+      <div class="layout">
+        <div class="top-overlay" aria-hidden="true">
+          <div class="top-line"></div>
 
-      <!-- Row 3 (hidden) -->
-      <div class="mill">
-        <select class="dropdown" id="coalName3">
-          <option value="">Select coal</option>
-        </select>
-      </div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="3" data-mill="0" placeholder="%"></div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="3" data-mill="1" placeholder="%"></div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="3" data-mill="2" placeholder="%"></div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="3" data-mill="3" placeholder="%"></div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="3" data-mill="4" placeholder="%"></div>
-      <div class="mill"><input type="text" class="percentage-input" data-row="3" data-mill="5" placeholder="%"></div>
-      <div class="mill"><input type="text" id="gcvBox3" class="gcv-box" placeholder="GCV"></div>
-      <div class="mill"><input type="text" id="costBox3" class="cost-input" placeholder="Cost/MT"></div>
+          <!-- arrows positioned by percentage (centers of 6 equal columns) -->
+          <div class="arrow" style="left:9.3333%;"></div>
+          <div class="arrow" style="left:26%;"></div>
+          <div class="arrow" style="left:41.6667%;"></div>
+          <div class="arrow" style="left:58.3333%;"></div>
+          <div class="arrow" style="left:75%;"></div>
+          <div class="arrow" style="left:91.6667%;"></div>
+        </div>
 
-      <!-- Row 4 (hidden) -->
-<div class="mill">
-  <select class="dropdown" id="coalName4">
-    <option value="">Select coal</option>
-  </select>
-</div>
-<div class="mill"><input type="text" class="percentage-input" data-row="4" data-mill="0" placeholder="%"></div>
-<div class="mill"><input type="text" class="percentage-input" data-row="4" data-mill="1" placeholder="%"></div>
-<div class="mill"><input type="text" class="percentage-input" data-row="4" data-mill="2" placeholder="%"></div>
-<div class="mill"><input type="text" class="percentage-input" data-row="4" data-mill="3" placeholder="%"></div>
-<div class="mill"><input type="text" class="percentage-input" data-row="4" data-mill="4" placeholder="%"></div>
-<div class="mill"><input type="text" class="percentage-input" data-row="4" data-mill="5" placeholder="%"></div>
-<div class="mill"><input type="text" id="gcvBox4" class="gcv-box" placeholder="GCV"></div>
-<div class="mill"><input type="text" id="costBox4" class="cost-input" placeholder="Cost/MT"></div>
+        <div class="bunkers-grid">
+          <!-- six bunkers (visible and enlarged) -->
+          <div class="bunker" data-bunker="0">
+            <svg viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet">
+              <path d="M10 10 V100 L45 140 M55 140 L90 100 V10" />
+            </svg>
+            <div class="label">Bunker 1</div>
+            <button class="add-coal-btn" onclick="openCoalPopup(0)">+</button>
+          </div>
 
-<!-- Row 5 (hidden) -->
-<div class="mill">
-  <select class="dropdown" id="coalName5">
-    <option value="">Select coal</option>
-  </select>
-</div>
-<div class="mill"><input type="text" class="percentage-input" data-row="5" data-mill="0" placeholder="%"></div>
-<div class="mill"><input type="text" class="percentage-input" data-row="5" data-mill="1" placeholder="%"></div>
-<div class="mill"><input type="text" class="percentage-input" data-row="5" data-mill="2" placeholder="%"></div>
-<div class="mill"><input type="text" class="percentage-input" data-row="5" data-mill="3" placeholder="%"></div>
-<div class="mill"><input type="text" class="percentage-input" data-row="5" data-mill="4" placeholder="%"></div>
-<div class="mill"><input type="text" class="percentage-input" data-row="5" data-mill="5" placeholder="%"></div>
-<div class="mill"><input type="text" id="gcvBox5" class="gcv-box" placeholder="GCV"></div>
-<div class="mill"><input type="text" id="costBox5" class="cost-input" placeholder="Cost/MT"></div>
+          <div class="bunker" data-bunker="1">
+            <svg viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet">
+              <path d="M10 10 V100 L45 140 M55 140 L90 100 V10" />
+            </svg>
+            <div class="label">Bunker 2</div>
+            <button class="add-coal-btn" onclick="openCoalPopup(1)">+</button>
+          </div>
 
+          <div class="bunker" data-bunker="2">
+            <svg viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet">
+              <path d="M10 10 V100 L45 140 M55 140 L90 100 V10" />
+            </svg>
+            <div class="label">Bunker 3</div>
+            <button class="add-coal-btn" onclick="openCoalPopup(2)">+</button>
+          </div>
 
+          <div class="bunker" data-bunker="3">
+            <svg viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet">
+              <path d="M10 10 V100 L45 140 M55 140 L90 100 V10" />
+            </svg>
+            <div class="label">Bunker 4</div>
+            <button class="add-coal-btn" onclick="openCoalPopup(3)">+</button>
+          </div>
 
+          <div class="bunker" data-bunker="4">
+            <svg viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet">
+              <path d="M10 10 V100 L45 140 M55 140 L90 100 V10" />
+            </svg>
+            <div class="label">Bunker 5</div>
+            <button class="add-coal-btn" onclick="openCoalPopup(4)">+</button>
+          </div>
 
-      <!-- diagram area (this is visible) -->
-
-      <div></div>
-      <div class="diagram-in-grid" style="padding:8px;">
-        <div class="layout">
-  <div class="top-overlay" aria-hidden="true">
-    <div class="top-line"></div>
-
-    <!-- arrows positioned by percentage (centers of 6 equal columns) -->
-    <div class="arrow" style="left:9.3333%;"></div>
-    <div class="arrow" style="left:26%;"></div>
-    <div class="arrow" style="left:41.6667%;"></div>
-    <div class="arrow" style="left:58.3333%;"></div>
-    <div class="arrow" style="left:75%;"></div>
-    <div class="arrow" style="left:91.6667%;"></div>
-  </div>
-          <div class="bunkers-grid">
-            <!-- six bunkers (visible and enlarged) -->
-            <div class="bunker" data-bunker="0">
-              <svg viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet"><path d="M10 10 V100 L45 140 M55 140 L90 100 V10" /></svg>
-              <div class="label">Bunker 1</div>
-              <!-- <div class="tooltip">Loading…</div> -->
-              <button class="add-coal-btn" onclick="openCoalPopup(0)">+</button>
-            </div>
-
-            <div class="bunker" data-bunker="1">
-              <svg viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet"><path d="M10 10 V100 L45 140 M55 140 L90 100 V10" /></svg>
-              <div class="label">Bunker 2</div>
-              <!-- <div class="tooltip">Loading…</div> -->
-              <button class="add-coal-btn" onclick="openCoalPopup(1)">+</button>
-            </div>
-
-            <div class="bunker" data-bunker="2">
-              <svg viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet"><path d="M10 10 V100 L45 140 M55 140 L90 100 V10" /></svg>
-              <div class="label">Bunker 3</div>
-              <!-- <div class="tooltip">Loading…</div> -->
-              <button class="add-coal-btn" onclick="openCoalPopup(2)">+</button>
-            </div>
-
-            <div class="bunker" data-bunker="3">
-              <svg viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet"><path d="M10 10 V100 L45 140 M55 140 L90 100 V10" /></svg>
-              <div class="label">Bunker 4</div>
-              <!-- <div class="tooltip">Loading…</div> -->
-              <button class="add-coal-btn" onclick="openCoalPopup(3)">+</button>
-            </div>
-
-            <div class="bunker" data-bunker="4">
-              <svg viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet"><path d="M10 10 V100 L45 140 M55 140 L90 100 V10" /></svg>
-              <div class="label">Bunker 5</div>
-              <!-- <div class="tooltip">Loading…</div> -->
-              <button class="add-coal-btn" onclick="openCoalPopup(4)">+</button>
-            </div>
-
-            <div class="bunker" data-bunker="5">
-              <svg viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet"><path d="M10 10 V100 L45 140 M55 140 L90 100 V10" /></svg>
-              <div class="label">Bunker 6</div>
-              <!-- <div class="tooltip">Loading…</div> -->
-              <button class="add-coal-btn" onclick="openCoalPopup(5)">+</button>
-            </div>
+          <div class="bunker" data-bunker="5">
+            <svg viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet">
+              <path d="M10 10 V100 L45 140 M55 140 L90 100 V10" />
+            </svg>
+            <div class="label">Bunker 6</div>
+            <button class="add-coal-btn" onclick="openCoalPopup(5)">+</button>
           </div>
         </div>
-      </div>
-      <div ></div>
-      <div ></div>
+      </div> <!-- .layout -->
+    </div> <!-- .diagram-in-grid -->
 
-      
+    <div></div>
+    <div></div>
 
-      <!-- Coal Flow row (visible) -->
-      <div class="mill coal-flow">Coal Flow(TPH)</div>
-      <div class="mill"><input type="text" class="flow-input" data-mill="0" placeholder="TPH"></div>
-      <div class="mill"><input type="text" class="flow-input" data-mill="1" placeholder="TPH"></div>
-      <div class="mill"><input type="text" class="flow-input" data-mill="2" placeholder="TPH"></div>
-      <div class="mill"><input type="text" class="flow-input" data-mill="3" placeholder="TPH"></div>
-      <div class="mill"><input type="text" class="flow-input" data-mill="4" placeholder="TPH"></div>
-      <div class="mill"><input type="text" class="flow-input" data-mill="5" placeholder="TPH"></div>
-      <div></div>
-      <div></div>
+    <!-- Coal Flow row (visible) -->
+    <div class="mill coal-flow">Coal Flow(TPH)</div>
+    <div class="mill"><input type="text" class="flow-input" data-mill="0" placeholder="TPH"></div>
+    <div class="mill"><input type="text" class="flow-input" data-mill="1" placeholder="TPH"></div>
+    <div class="mill"><input type="text" class="flow-input" data-mill="2" placeholder="TPH"></div>
+    <div class="mill"><input type="text" class="flow-input" data-mill="3" placeholder="TPH"></div>
+    <div class="mill"><input type="text" class="flow-input" data-mill="4" placeholder="TPH"></div>
+    <div class="mill"><input type="text" class="flow-input" data-mill="5" placeholder="TPH"></div>
+    <div></div>
+    <div></div>
 
-<!-- Next Timer row -->
+    <!-- Next Timer row -->
 <div class="mill next-timer">Next timer</div>
-<div class="mill"><input type="text" class="flow-input timer-input" data-mill="0" placeholder="hh:mm:ss"></div>
-<div class="mill"><input type="text" class="flow-input timer-input" data-mill="1" placeholder="hh:mm:ss"></div>
-<div class="mill"><input type="text" class="flow-input timer-input" data-mill="2" placeholder="hh:mm:ss"></div>
-<div class="mill"><input type="text" class="flow-input timer-input" data-mill="3" placeholder="hh:mm:ss"></div>
-<div class="mill"><input type="text" class="flow-input timer-input" data-mill="4" placeholder="hh:mm:ss"></div>
-<div class="mill"><input type="text" class="flow-input timer-input" data-mill="5" placeholder="hh:mm:ss"></div>
-<div></div>
-<div></div>
-
-<!-- Bunker Total row -->
-<div class="mill bunker-total">Bunker Total</div>
-<div class="mill"><input type="text" class="flow-input total-input" data-mill="0" placeholder="TPH"></div>
-<div class="mill"><input type="text" class="flow-input total-input" data-mill="1" placeholder="TPH"></div>
-<div class="mill"><input type="text" class="flow-input total-input" data-mill="2" placeholder="TPH"></div>
-<div class="mill"><input type="text" class="flow-input total-input" data-mill="3" placeholder="TPH"></div>
-<div class="mill"><input type="text" class="flow-input total-input" data-mill="4" placeholder="TPH"></div>
-<div class="mill"><input type="text" class="flow-input total-input" data-mill="5" placeholder="TPH"></div>
-<div></div>
-<div></div>
+<div class="mill"><input id="nextTimer0" type="text" class="flow-input timers-input" data-mill="0" placeholder="hh:mm:ss" readonly></div>
+<div class="mill"><input id="nextTimer1" type="text" class="flow-input timers-input" data-mill="1" placeholder="hh:mm:ss" readonly></div>
+<div class="mill"><input id="nextTimer2" type="text" class="flow-input timers-input" data-mill="2" placeholder="hh:mm:ss" readonly></div>
+<div class="mill"><input id="nextTimer3" type="text" class="flow-input timers-input" data-mill="3" placeholder="hh:mm:ss" readonly></div>
+<div class="mill"><input id="nextTimer4" type="text" class="flow-input timers-input" data-mill="4" placeholder="hh:mm:ss" readonly></div>
+<div class="mill"><input id="nextTimer5" type="text" class="flow-input timers-input" data-mill="5" placeholder="hh:mm:ss" readonly></div>
 
 
-      <!-- NEW ROW: Total percent present in each bunker (readonly) -->
-      <!-- <div class="mill show-row">Total % in Bunker</div>
-      <div class="mill show-row"><input type="text" id="totalPercent0" class="next-blend-box" readonly></div>
-      <div class="mill show-row"><input type="text" id="totalPercent1" class="next-blend-box" readonly></div>
-      <div class="mill show-row"><input type="text" id="totalPercent2" class="next-blend-box" readonly></div>
-      <div class="mill show-row"><input type="text" id="totalPercent3" class="next-blend-box" readonly></div>
-      <div class="mill show-row"><input type="text" id="totalPercent4" class="next-blend-box" readonly></div>
-      <div class="mill show-row"><input type="text" id="totalPercent5" class="next-blend-box" readonly></div>
-      <div class="mill show-row"></div>
-      <div class="mill show-row"></div> -->
+    <!-- Bunker Total row -->
+    <div class="mill bunker-total">Bunker Total</div>
+    <div class="mill"><input type="text" class="flow-input total-inputs" data-mill="0" placeholder="TPH"></div>
+    <div class="mill"><input type="text" class="flow-input total-inputs" data-mill="1" placeholder="TPH"></div>
+    <div class="mill"><input type="text" class="flow-input total-inputs" data-mill="2" placeholder="TPH"></div>
+    <div class="mill"><input type="text" class="flow-input total-inputs" data-mill="3" placeholder="TPH"></div>
+    <div class="mill"><input type="text" class="flow-input total-inputs" data-mill="4" placeholder="TPH"></div>
+    <div class="mill"><input type="text" class="flow-input total-inputs" data-mill="5" placeholder="TPH"></div>
+    <div></div>
+    <div></div>
 
-      <!-- NEW ROW: Time to empty bunker (readonly HH:MM:SS) -->
-      <!-- <div class="mill show-row">Time to Empty</div>
-      <div class="mill show-row"><input type="text" id="timeToEmpty0" class="next-blend-box" readonly></div>
-      <div class="mill show-row"><input type="text" id="timeToEmpty1" class="next-blend-box" readonly></div>
-      <div class="mill show-row"><input type="text" id="timeToEmpty2" class="next-blend-box" readonly></div>
-      <div class="mill show-row"><input type="text" id="timeToEmpty3" class="next-blend-box" readonly></div>
-      <div class="mill show-row"><input type="text" id="timeToEmpty4" class="next-blend-box" readonly></div>
-      <div class="mill show-row"><input type="text" id="timeToEmpty5" class="next-blend-box" readonly></div>
-      <div class="mill show-row"></div>
-      <div class="mill show-row"></div> -->
+    <!-- AFT row (kept in DOM but hidden) -->
+    <div class="mill aft-head hidden-dom" aria-hidden="true">AFT(°C)</div>
+    <div class="mill aft hidden-dom" data-mill="0" aria-hidden="true">--</div>
+    <div class="mill aft hidden-dom" data-mill="1" aria-hidden="true">--</div>
+    <div class="mill aft hidden-dom" data-mill="2" aria-hidden="true">--</div>
+    <div class="mill aft hidden-dom" data-mill="3" aria-hidden="true">--</div>
+    <div class="mill aft hidden-dom" data-mill="4" aria-hidden="true">--</div>
+    <div class="mill aft hidden-dom" data-mill="5" aria-hidden="true">--</div>
+    <div></div>
+    <div></div>
 
-      
-      <!-- AFT row (kept in DOM but hidden) -->
-      <div class="mill aft-head">AFT(°C)</div>
-      <div class="mill aft" data-mill="0">--</div>
-      <div class="mill aft" data-mill="1">--</div>
-      <div class="mill aft" data-mill="2">--</div>
-      <div class="mill aft" data-mill="3">--</div>
-      <div class="mill aft" data-mill="4">--</div>
-      <div class="mill aft" data-mill="5">--</div>
-      <div></div>
-      <div></div>
+    <!-- Next Blend (kept in DOM but hidden) -->
+    <div class="mill" aria-hidden="true">Next Coal Blend</div>
+    <div class="mill"><input type="text" id="nextBlend0" class="next-blend-box" readonly></div>
+    <div class="mill"><input type="text" id="nextBlend1" class="next-blend-box" readonly></div>
+    <div class="mill"><input type="text" id="nextBlend2" class="next-blend-box" readonly></div>
+    <div class="mill"><input type="text" id="nextBlend3" class="next-blend-box" readonly></div>
+    <div class="mill"><input type="text" id="nextBlend4" class="next-blend-box" readonly></div>
+    <div class="mill"><input type="text" id="nextBlend5" class="next-blend-box" readonly></div>
+    <div></div>
+    <div></div>
 
-      <!-- Next Blend (kept in DOM but hidden) -->
-      <div class="mill">Next Coal Blend</div>
-      <div class="mill"><input type="text" id="nextBlend0" class="next-blend-box" readonly></div>
-      <div class="mill"><input type="text" id="nextBlend1" class="next-blend-box" readonly></div>
-      <div class="mill"><input type="text" id="nextBlend2" class="next-blend-box" readonly></div>
-      <div class="mill"><input type="text" id="nextBlend3" class="next-blend-box" readonly></div>
-      <div class="mill"><input type="text" id="nextBlend4" class="next-blend-box" readonly></div>
-      <div class="mill"><input type="text" id="nextBlend5" class="next-blend-box" readonly></div>
-      <div></div>
-      <div></div>
+  </div><!-- .mills-grid -->
+</div><!-- .main-container -->
 
+<!-- Popup used to add a coal layer to a specific bunker -->
+<div id="coalPopup" class="popup hidden" aria-hidden="true">
+  <div class="popup-content" role="dialog" aria-modal="true">
+    <h3>Add coal to bunker</h3>
+
+    <div class="popup-row">
+      <label for="popupCoal">Coal</label>
+      <select id="popupCoal"><option value="">Loading…</option></select>
     </div>
-  </div>
 
-  <!-- Popup used to add a coal layer to a specific bunker -->
-  <div id="coalPopup" class="popup hidden" aria-hidden="true">
-    <div class="popup-content" role="dialog" aria-modal="true">
-      <h3>Add coal to bunker</h3>
-      <div class="popup-row">
-        <label for="popupCoal">Coal</label>
-        <select id="popupCoal"><option value="">Loading…</option></select>
-      </div>
-<div class="popup-row">
-  <label for="popupPercent">Tonnage (tons)</label>
-  <input id="popupPercent" type="number" min="0" step="any" placeholder="Enter tons (e.g. 300)" />
-</div>
-<div class="popup-row" style="margin-top:6px;">
-  <label>Note</label>
-  <div style="font-size:13px;color:#666">You can add up to 5 layers per bunker (bottom → middle → top → ...). This action fills the first available layer.</div>
-</div>
-
-      <div class="popup-actions">
-        <button class="btn btn-clear" id="clearLastBtn" title="Remove last added layer">Clear last</button>
-        <button class="btn btn-cancel" id="cancelPopup">Cancel</button>
-        <button class="btn btn-save" id="savePopup">Save</button>
-      </div>
-      <input type="hidden" id="popupBunkerIndex" value="">
+    <div class="popup-row">
+      <label for="popupPercent">Tonnage (tons)</label>
+      <input id="popupPercent" type="number" min="0" step="any" placeholder="Enter tons (e.g. 300)" />
     </div>
+
+    <div class="popup-row" style="margin-top:6px;">
+      <label>Note</label>
+      <div style="font-size:13px;color:#666">
+        You can add up to 5 layers per bunker (bottom → middle → top → ...). This action fills the first available layer.
+      </div>
+    </div>
+
+    <div class="popup-actions">
+      <button class="btn btn-clear" id="clearLastBtn" title="Remove last added layer">Clear last</button>
+      <button class="btn btn-cancel" id="cancelPopup">Cancel</button>
+      <button class="btn btn-save" id="savePopup">Save</button>
+    </div>
+
+    <input type="hidden" id="popupBunkerIndex" value="">
   </div>
+</div>
 
   <!-- ---------- Calculation script (keeps all existing logic) ---------- -->
-  <script>
+<script>
 window.NUM_COAL_ROWS = window.NUM_COAL_ROWS || 5;
  // ← change this to 4/6/... as needed
 const DEFAULT_COAL_COLORS = ["#f39c12","#3498db","#2ecc71","#ef4444","#8b5cf6","#14b8a6","#f97316","#06b6d4"];
@@ -1526,12 +1326,15 @@ document.addEventListener('DOMContentLoaded', function(){
     } catch(e){ console.error(e); alert('PDF export failed (see console).'); }
   });
 });
-  </script>
+</script>
 
   <!-- ---------- UI helper script (popup + mapping into hidden inputs) ---------- -->
   <!-- Keep all scripts & logic unchanged (calculations rely on existing IDs/classes) -->
 <script>
-/* Updated popup/helper script that supports dynamic NUM_COAL_ROWS (default fallback = 5) */
+/* Updated popup/helper script that supports dynamic NUM_COAL_ROWS (default fallback = 5)
+   - per-bunker capacity-aware timer calculation
+   - clearLastLayer removes the actual last added layer (per-bunker seq stamp)
+*/
 
 console.log('[coal-helper] script loaded');
 
@@ -1546,7 +1349,6 @@ function getNumRows(){
 
 function buildOptionsFromDB(db){
   if(!db || !Array.isArray(db)) return '<option value="">No data</option>';
-  // sort by 'coal' or 'name' (case-insensitive)
   const sorted = db.slice().sort((a,b) => {
     const aa = String(a.coal || a.name || '').trim().toLowerCase();
     const bb = String(b.coal || b.name || '').trim().toLowerCase();
@@ -1578,7 +1380,6 @@ async function ensureCoalDB(timeout = 3000) {
       const json = await res.json();
       if(Array.isArray(json)){ window.COAL_DB = json; return window.COAL_DB; }
       if(json && Array.isArray(json.data)){ window.COAL_DB = json.data; return window.COAL_DB; }
-      // also handle { coals: [...] }
       if(json && Array.isArray(json.coals)){ window.COAL_DB = json.coals; return window.COAL_DB; }
     }catch(e){}
   }
@@ -1601,14 +1402,12 @@ async function populateHiddenDropdownsAndPopup(){
     }
   }
 
-  // set options for each hidden select coalName1..coalNameN
   for(let r=1; r<=N; r++){
     const sel = document.getElementById('coalName' + r);
     if(!sel) continue;
     setSelectOptionsPreserve(sel, optsHtml);
   }
 
-  // popup select
   const popup = document.getElementById('popupCoal');
   if(popup) popup.innerHTML = optsHtml;
 
@@ -1638,8 +1437,8 @@ function findFirstAvailableRowForBunker(bunkerIndex){
   return null;
 }
 
-/* Find the last filled row for a bunker:
-   returns the highest-index row that currently has >0% (topmost filled).
+/* Find the last filled row for a bunker by highest index (topmost filled).
+   Kept for UI fallback, but clear uses seq-based logic for exact "last added".
 */
 function findLastFilledRowForBunker(bunkerIndex){
   const N = getNumRows();
@@ -1662,7 +1461,6 @@ async function openCoalPopup(bunkerIndex){
   if(popupCoal) popupCoal.value = '';
   const last = findLastFilledRowForBunker(bunkerIndex);
   document.getElementById('clearLastBtn').style.display = last ? 'inline-block' : 'none';
-  // update the note text (optional dynamic update)
   const noteDiv = document.querySelector('#coalPopup .popup-row:nth-child(3) div');
   if(noteDiv){
     const N = getNumRows();
@@ -1680,8 +1478,23 @@ function closeCoalPopup(){
   popup.setAttribute('aria-hidden','true');
 }
 
-/* Save selection into hidden selects & percentage inputs */
-/* Save selection into hidden selects & percentage inputs (fixed: store per-cell, not global) */
+/* --- Sequence tracking for 'last added' behavior --- */
+// object mapping bunkerIndex -> last seq number used
+window.__coalSeqCounterByBunker = window.__coalSeqCounterByBunker || {};
+
+/* Helper: produce/ensure a hidden input, used for per-cell storage */
+function ensureHiddenInputLocal(id) {
+  var el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement('input');
+    el.type = 'hidden';
+    el.id = id;
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+/* Save selection into hidden selects & percentage inputs (stores per-cell seq) */
 function saveCoalSelection() {
   try {
     const bunkerIndex = Number(document.getElementById('popupBunkerIndex').value);
@@ -1693,7 +1506,19 @@ function saveCoalSelection() {
     if (!coalId) { alert('Please select a coal'); return; }
     if (!isFinite(tonnes) || tonnes <= 0) { alert('Please enter a valid tonnage greater than 0'); return; }
 
-    const bunkerCapacity = parseFloat(document.getElementById('bunkerCapacity')?.value) || 0;
+    // get bunker capacity (per-bunker preferred)
+    // look for: .bunker-capacity[data-mill="X"], then #bunkerCapacityX, then #bunkerCapacity (global)
+    let bunkerCapacity = null;
+    const capEl1 = document.querySelector(`.bunker-capacity[data-mill="${bunkerIndex}"]`);
+    if(capEl1) bunkerCapacity = parseFloat(capEl1.value || capEl1.textContent || capEl1.dataset.value) || null;
+    if(bunkerCapacity === null) {
+      const capEl2 = document.getElementById('bunkerCapacity' + bunkerIndex);
+      if(capEl2) bunkerCapacity = parseFloat(capEl2.value || capEl2.textContent || capEl2.dataset.value) || null;
+    }
+    if(bunkerCapacity === null) {
+      const capEl3 = document.getElementById('bunkerCapacity');
+      if(capEl3) bunkerCapacity = parseFloat(capEl3.value || capEl3.textContent || capEl3.dataset.value) || null;
+    }
     if (!isFinite(bunkerCapacity) || bunkerCapacity <= 0) { alert('Please enter the bunker capacity first'); return; }
 
     // Convert tonnes -> percent (2 decimals)
@@ -1702,7 +1527,6 @@ function saveCoalSelection() {
 
     if (percent <= 0) { alert('Entered tonnage yields 0% — enter a larger tonnage'); return; }
     if (percent > 100) {
-      // warn and cap at 100% — you can change this behavior if you prefer
       if(!confirm(`Entered tonnage (${tonnes}) is greater than bunker capacity (${bunkerCapacity}). This will be capped to 100%. Proceed?`)) return;
       percent = 100;
     }
@@ -1715,7 +1539,7 @@ function saveCoalSelection() {
 
     const coalObj = getCoalByIdOrName(coalId);
 
-    // Add option to the row select if it doesn't already exist (but DO NOT set sel.value)
+    // Add option to the row select if it doesn't already exist (but DO NOT set sel.value globally)
     if (!Array.from(sel.options).some(o => String(o.value) === String(coalId))) {
       const opt = document.createElement('option');
       opt.value = coalId;
@@ -1723,21 +1547,26 @@ function saveCoalSelection() {
       sel.appendChild(opt);
     }
 
+    // increment seq counter for this bunker
+    window.__coalSeqCounterByBunker[bunkerIndex] = (window.__coalSeqCounterByBunker[bunkerIndex] || 0) + 1;
+    const seqVal = window.__coalSeqCounterByBunker[bunkerIndex];
+
     // Store selection per-cell (row, bunkerIndex)
     if (typeof setCellCoal === 'function') {
+      // if user has a helper, call it — but still store seq and gcv/cost hidden inputs to be safe
       setCellCoal(row, bunkerIndex, coalId);
-    } else {
-      function ensureHiddenInputLocal(id) {
-        var el = document.getElementById(id);
-        if (!el) {
-          el = document.createElement('input');
-          el.type = 'hidden';
-          el.id = id;
-          document.body.appendChild(el);
-        }
-        return el;
-      }
       ensureHiddenInputLocal(`coal_cell_r${row}_m${bunkerIndex}`).value = coalId;
+      ensureHiddenInputLocal(`seq_cell_r${row}_m${bunkerIndex}`).value = String(seqVal);
+      if (coalObj) {
+        ensureHiddenInputLocal(`gcv_cell_r${row}_m${bunkerIndex}`).value = coalObj.gcv || '';
+        ensureHiddenInputLocal(`cost_cell_r${row}_m${bunkerIndex}`).value = coalObj.cost || '';
+      } else {
+        ensureHiddenInputLocal(`gcv_cell_r${row}_m${bunkerIndex}`).value = '';
+        ensureHiddenInputLocal(`cost_cell_r${row}_m${bunkerIndex}`).value = '';
+      }
+    } else {
+      ensureHiddenInputLocal(`coal_cell_r${row}_m${bunkerIndex}`).value = coalId;
+      ensureHiddenInputLocal(`seq_cell_r${row}_m${bunkerIndex}`).value = String(seqVal);
       if (coalObj) {
         ensureHiddenInputLocal(`gcv_cell_r${row}_m${bunkerIndex}`).value = coalObj.gcv || '';
         ensureHiddenInputLocal(`cost_cell_r${row}_m${bunkerIndex}`).value = coalObj.cost || '';
@@ -1784,7 +1613,7 @@ function saveCoalSelection() {
     const clearBtn = document.getElementById('clearLastBtn');
     if (clearBtn) clearBtn.style.display = more ? 'inline-block' : 'none';
 
-    // ALWAYS close the popup after a successful save (fixes the bug you reported)
+    // ALWAYS close the popup after a successful save (fixes the UX bug)
     if (typeof closeCoalPopup === 'function') closeCoalPopup();
   } catch (e) {
     console.error('[coal-helper] saveCoalSelection error', e);
@@ -1792,50 +1621,62 @@ function saveCoalSelection() {
   }
 }
 
-
-
-/* Clear the last (topmost) added layer for a bunker (fixed to clear per-cell hidden inputs) */
+/* Clear the last (most recently added) layer for a bunker using seq stamps */
 function clearLastLayer() {
   try {
     const bunkerIndex = Number(document.getElementById('popupBunkerIndex').value);
-    const last = findLastFilledRowForBunker(bunkerIndex);
-    if (!last) { alert('No layer to clear'); return; }
+    const N = getNumRows();
+
+    // find the per-cell seq values for this bunker and pick the maximum (latest)
+    let maxSeq = -1;
+    let chosenRow = null;
+    for (let r = 1; r <= N; r++) {
+      const seqEl = document.getElementById(`seq_cell_r${r}_m${bunkerIndex}`);
+      const pctEl = document.querySelector(`.percentage-input[data-row="${r}"][data-mill="${bunkerIndex}"]`);
+      const pctVal = parseFloat(pctEl?.value) || 0;
+      let seqVal = -1;
+      if (seqEl && seqEl.value) seqVal = parseInt(seqEl.value, 10) || -1;
+      // prefer seq, but if seq missing, treat rows with pct as potential candidates using index ordering
+      if (seqVal > maxSeq) {
+        maxSeq = seqVal;
+        chosenRow = r;
+      } else if(seqVal === -1 && pctVal > 0 && maxSeq === -1) {
+        // fallback: if no seqs anywhere, choose topmost filled (previous behavior)
+        chosenRow = (chosenRow === null) ? r : chosenRow;
+      }
+    }
+
+    if (!chosenRow) { alert('No layer to clear'); return; }
 
     // Clear percentage input
-    const pctInput = document.querySelector(`.percentage-input[data-row="${last}"][data-mill="${bunkerIndex}"]`);
+    const pctInput = document.querySelector(`.percentage-input[data-row="${chosenRow}"][data-mill="${bunkerIndex}"]`);
     if (pctInput) { pctInput.value = ''; pctInput.dispatchEvent(new Event('input', { bubbles: true })); }
 
-    // Clear per-cell hidden coal/gcv/cost
+    // Clear per-cell hidden coal/gcv/cost/seq
+    const hidCoal = document.getElementById(`coal_cell_r${chosenRow}_m${bunkerIndex}`);
+    if (hidCoal) hidCoal.value = '';
+    const hidG = document.getElementById(`gcv_cell_r${chosenRow}_m${bunkerIndex}`);
+    if (hidG) hidG.value = '';
+    const hidC = document.getElementById(`cost_cell_r${chosenRow}_m${bunkerIndex}`);
+    if (hidC) hidC.value = '';
+    const hidSeq = document.getElementById(`seq_cell_r${chosenRow}_m${bunkerIndex}`);
+    if (hidSeq) hidSeq.value = '';
+
+    // If user has a helper to set cell coal, call with empty value to preserve any internal invariants
     if (typeof setCellCoal === 'function') {
-      // set empty value via helper
-      setCellCoal(last, bunkerIndex, '');
-      // ensure gcv/cost hidden cleared as well (helper normally clears)
-      const gcvId = `gcv_cell_r${last}_m${bunkerIndex}`, costId = `cost_cell_r${last}_m${bunkerIndex}`;
-      const gcvEl = document.getElementById(gcvId), costEl = document.getElementById(costId);
-      if (gcvEl) gcvEl.value = '';
-      if (costEl) costEl.value = '';
-    } else {
-      const hidCoal = document.getElementById(`coal_cell_r${last}_m${bunkerIndex}`);
-      if (hidCoal) hidCoal.value = '';
-      const hidG = document.getElementById(`gcv_cell_r${last}_m${bunkerIndex}`);
-      if (hidG) hidG.value = '';
-      const hidC = document.getElementById(`cost_cell_r${last}_m${bunkerIndex}`);
-      if (hidC) hidC.value = '';
+      try { setCellCoal(chosenRow, bunkerIndex, ''); } catch(e){ /* ignore */ }
     }
 
     // If this row is no longer used anywhere (no per-cell coal set and no percentages), clear the global row select
-    const sel = document.getElementById(`coalName${last}`);
+    const sel = document.getElementById(`coalName${chosenRow}`);
     let usedElsewhere = false;
-    const N = getNumRows();
-    // check per-mill percentages AND per-cell coal hidden inputs
     for (let m = 0; m < 6; m++) {
-      const pct = parseFloat(document.querySelector(`.percentage-input[data-row="${last}"][data-mill="${m}"]`)?.value) || 0;
+      const pct = parseFloat(document.querySelector(`.percentage-input[data-row="${chosenRow}"][data-mill="${m}"]`)?.value) || 0;
       if (pct > 0) { usedElsewhere = true; break; }
-      const perCellCoalEl = document.getElementById(`coal_cell_r${last}_m${m}`);
+      const perCellCoalEl = document.getElementById(`coal_cell_r${chosenRow}_m${m}`);
       if (perCellCoalEl && perCellCoalEl.value) { usedElsewhere = true; break; }
     }
     if (!usedElsewhere && sel) {
-      // only clear if the global select value is not used in other rows too (be cautious)
       sel.value = '';
     }
 
@@ -1844,32 +1685,13 @@ function clearLastLayer() {
     if (typeof updateBunkerColors === 'function') updateBunkerColors();
 
     const more = findLastFilledRowForBunker(bunkerIndex);
-    document.getElementById('clearLastBtn').style.display = more ? 'inline-block' : 'none';
+    const clearBtn = document.getElementById('clearLastBtn');
+    if (clearBtn) clearBtn.style.display = more ? 'inline-block' : 'none';
     if (!more) closeCoalPopup();
   } catch (e) {
     console.error('[coal-helper] clearLastLayer error', e);
     alert('Error clearing layer — see console.');
   }
-}
-
-
-/* Clear the last (topmost) added layer for a bunker */
-function clearLastLayer(){
-  const bunkerIndex = Number(document.getElementById('popupBunkerIndex').value);
-  const last = findLastFilledRowForBunker(bunkerIndex);
-  if(!last){ alert('No layer to clear'); return; }
-  const pctInput = document.querySelector(`.percentage-input[data-row="${last}"][data-mill="${bunkerIndex}"]`);
-  if(pctInput) { pctInput.value = ''; pctInput.dispatchEvent(new Event('input', { bubbles:true })); }
-  const sel = document.getElementById(`coalName${last}`);
-  let usedElsewhere = false;
-  for(let m=0;m<6;m++){ if(parseFloat(document.querySelector(`.percentage-input[data-row="${last}"][data-mill="${m}"]`)?.value) > 0) { usedElsewhere = true; break; } }
-  if(!usedElsewhere && sel) sel.value = '';
-  if(typeof calculateBlended === 'function') calculateBlended();
-  if(typeof validateMillPercentages === 'function') validateMillPercentages();
-  if(typeof updateBunkerColors === 'function') updateBunkerColors();
-  const more = findLastFilledRowForBunker(bunkerIndex);
-  document.getElementById('clearLastBtn').style.display = more ? 'inline-block' : 'none';
-  if(!more) closeCoalPopup();
 }
 
 /* Wire buttons + popup actions on DOM ready */
@@ -1930,17 +1752,12 @@ function updateBunkerTooltips() {
 }
 setInterval(updateBunkerTooltips, 1500);
 
-
 /* ---------- Patch: bunker totals + live "Next timer" countdowns ---------- */
 (function(){
-  // avoid double-paste
   if(window.__bunkerTotalsPatch) return;
   window.__bunkerTotalsPatch = true;
 
-  // keep reference to original calculateBlended (if present)
   const _origCalculateBlended = (typeof calculateBlended === 'function') ? calculateBlended : null;
-
-  // helpers ---------------------------------------------------------------
 
   // Sum percent for a bunker (reads percentage-input rows 1..N)
   function getBunkerPercentSum(bIndex){
@@ -1955,33 +1772,49 @@ setInterval(updateBunkerTooltips, 1500);
   // Update the "Bunker Total" inputs (class total-input) with percent string
   function updateBunkerTotalsUI(){
     for(let m=0;m<6;m++){
-      // prefer an input with class total-input and data-mill
       const el = document.querySelector(`.total-input[data-mill="${m}"]`);
       const sumPct = getBunkerPercentSum(m);
       if(el){
-        // keep it as "xx.xx%" string so it is readable; also store numeric on dataset
         el.value = `${sumPct.toFixed(2)}%`;
         el.dataset.percent = String(sumPct);
       }
     }
   }
 
-  // Compute total seconds for bunker using existing computeLayerSeconds if available
+  // Get per-bunker capacity (tries multiple selectors then falls back)
+  function getBunkerCapacityForIndex(bIndex){
+    // attempt common patterns:
+    const el1 = document.querySelector(`.bunker-capacity[data-mill="${bIndex}"]`);
+    if(el1) return Number(el1.value || el1.dataset.value || el1.textContent) || 0;
+    const el2 = document.getElementById('bunkerCapacity' + bIndex);
+    if(el2) return Number(el2.value || el2.dataset.value || el2.textContent) || 0;
+    const el3 = document.getElementById('bunkerCapacity');
+    if(el3) return Number(el3.value || el3.dataset.value || el3.textContent) || 0;
+    // last fallback: function getSingleBunkerCapacity()
+    if(typeof getSingleBunkerCapacity === 'function') return Number(getSingleBunkerCapacity() || 0);
+    return 0;
+  }
+
+  // Compute total seconds for bunker using per-bunker capacity and flow
   function computeTotalBunkerSeconds(bIndex){
+    // prefer a computeLayerSeconds() if it returns per-layer seconds (keeps compatibility)
     if(typeof computeLayerSeconds === 'function'){
-      const arr = computeLayerSeconds(bIndex) || [];
-      return arr.reduce((a,b)=>a + (Number(b)||0), 0);
+      try{
+        const arr = computeLayerSeconds(bIndex) || [];
+        if(Array.isArray(arr) && arr.length) return arr.reduce((a,b)=>a + (Number(b)||0), 0);
+      }catch(e){
+        // fallthrough to capacity/flow calculation
+      }
     }
     // fallback: use sumPct / 100 * bunkerCapacity / flow
     const sumPct = getBunkerPercentSum(bIndex);
-    const bunkerCapacity = (typeof getSingleBunkerCapacity === 'function') ? Number(getSingleBunkerCapacity() || 0) : (parseFloat(document.getElementById('bunkerCapacity')?.value) || 0);
+    const bunkerCapacity = getBunkerCapacityForIndex(bIndex);
     const flow = parseFloat(document.querySelector(`.flow-input[data-mill="${bIndex}"]`)?.value) || 0;
     if(flow <= 0 || bunkerCapacity <= 0 || sumPct <= 0) return 0;
     const hours = (sumPct / 100.0) * bunkerCapacity / flow;
     return hours * 3600;
   }
 
-  // formatHMS already exists in your script; fallback if not
   function _formatHMS(sec){
     if(typeof formatHMS === 'function') return formatHMS(sec);
     const s = Math.max(0, Math.floor(sec));
@@ -1991,7 +1824,6 @@ setInterval(updateBunkerTooltips, 1500);
     return `${String(hrs).padStart(2,'0')}:${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
   }
 
-  // Live countdown manager for 6 bunkers (timer-input)
   const totalCountdowns = new Array(6).fill(null).map(()=>({ intervalId: null, remaining: 0 }));
 
   function _updateTimerUI(bIndex){
@@ -2020,17 +1852,17 @@ setInterval(updateBunkerTooltips, 1500);
     const secs = Math.max(0, Math.floor(Number(seconds) || 0));
     const obj = totalCountdowns[bIndex];
 
-    // if secs is zero -> clear UI & timers
     if(secs <= 0){ clearTotalCountdown(bIndex); return; }
 
-    // if timer already running, reset remaining
     if(obj.intervalId){
+      if(Math.abs((obj.remaining || 0) - secs) <= 1){
+        return;
+      }
       obj.remaining = secs;
       _updateTimerUI(bIndex);
       return;
     }
 
-    // otherwise start a new interval
     obj.remaining = secs;
     _updateTimerUI(bIndex);
     obj.intervalId = setInterval(()=>{
@@ -2043,20 +1875,17 @@ setInterval(updateBunkerTooltips, 1500);
     }, 1000);
   }
 
-  // Public helpers (optional)
+  // Public helpers
   window.updateBunkerTotalsUI = updateBunkerTotalsUI;
   window.clearTotalCountdown = clearTotalCountdown;
   window.startOrResetTotalCountdown = startOrResetTotalCountdown;
   window.computeTotalBunkerSeconds = computeTotalBunkerSeconds;
 
-  // Wrapper: replace calculateBlended with a wrapper that calls original then our updates
   function wrappedCalculateBlended(){
     try{
       if(typeof _origCalculateBlended === 'function'){
-        // call original logic
         _origCalculateBlended();
       } else {
-        // if original missing, at least run some fallbacks
         console.warn('Original calculateBlended not found — running fallback updates only.');
       }
     } catch(err){
@@ -2064,10 +1893,8 @@ setInterval(updateBunkerTooltips, 1500);
     }
 
     try{
-      // 1) update bunker totals UI (percent)
       updateBunkerTotalsUI();
 
-      // 2) compute total seconds (from layer seconds) per bunker and start/reset countdowns
       for(let m=0;m<6;m++){
         const secs = Math.max(0, Math.floor(computeTotalBunkerSeconds(m) || 0));
         if(secs > 0){
@@ -2087,16 +1914,12 @@ setInterval(updateBunkerTooltips, 1500);
   // run initial update now if the page already called calculateBlended earlier
   try{ wrappedCalculateBlended(); } catch(e){}
 
-  // also hook into attachAutoUpdate events: whenever a percentage input or flow-input changes they call calculateBlended()
-  // no extra wiring required as we replaced calculateBlended itself.
-
-  // cleanup on unload (optional)
   window.addEventListener('beforeunload', function(){
     for(let i=0;i<totalCountdowns.length;i++) if(totalCountdowns[i].intervalId) clearInterval(totalCountdowns[i].intervalId);
   });
 })();
-
 </script>
+
 
 <script>
   // -------------------- Save wrapper so Submit button works --------------------
@@ -2165,6 +1988,206 @@ async function savePayload(e){
 // expose globally (so inline DOM wiring can find it)
 window.savePayload = savePayload;
 
+</script>
+
+
+<script>
+(function(){
+  if(window.__bunkerOverlayFix_v3) return;
+  window.__bunkerOverlayFix_v3 = true;
+
+  // ensure top-overlay exists
+  function ensureTopOverlay(){
+    const layout = document.querySelector('.diagram-in-grid .layout');
+    if(!layout) return null;
+    // ensure layout will not clip overlays
+    layout.style.overflow = 'visible';
+    let overlay = layout.querySelector('.top-overlay');
+    if(!overlay){
+      overlay = document.createElement('div');
+      overlay.className = 'top-overlay';
+      // insert as first child so it's positioned relative to layout
+      layout.insertBefore(overlay, layout.firstChild);
+    }
+    return { layout, overlay };
+  }
+
+  // create one overlay button per arrow if missing
+  function createOverlayButtons(){
+    const res = ensureTopOverlay();
+    if(!res) return;
+    const { layout, overlay } = res;
+    const arrows = Array.from(layout.querySelectorAll('.arrow'));
+    // remove any extra buttons whose index is out of range
+    const existing = Array.from(overlay.querySelectorAll('.add-coal-overlay'));
+    existing.forEach(btn=>{
+      const idx = Number(btn.dataset.bunker);
+      if(Number.isNaN(idx) || idx < 0 || idx >= arrows.length) btn.remove();
+    });
+
+    arrows.forEach((arrow, index) => {
+      let btn = overlay.querySelector(`.add-coal-overlay[data-bunker="${index}"]`);
+      if(!btn){
+        btn = document.createElement('button');
+        btn.className = 'add-coal-overlay';
+        btn.dataset.bunker = String(index);
+        btn.setAttribute('aria-label', `Add coal to bunker ${index+1}`);
+        btn.innerText = '+';
+        btn.addEventListener('click', function(ev){
+          ev.stopPropagation();
+          if(typeof window.openCoalPopup === 'function'){
+            window.openCoalPopup(index);
+          } else {
+            console.warn('openCoalPopup not found for add-coal-overlay');
+          }
+        });
+        overlay.appendChild(btn);
+      }
+    });
+  }
+
+  // helper to detect rect collisions
+  function rectsIntersect(a,b){
+    return !(b.left >= a.right || b.right <= a.left || b.top >= a.bottom || b.bottom <= a.top);
+  }
+
+  // position overlay buttons at arrow tips; nudge up to avoid overlapping colored rects
+// position overlay buttons at arrow tips; place them BELOW the tip (lower side)
+function positionOverlayButtons(){
+  const res = ensureTopOverlay();
+  if(!res) return;
+  const { layout, overlay } = res;
+  const layoutRect = layout.getBoundingClientRect();
+  const arrows = Array.from(layout.querySelectorAll('.arrow'));
+  const buttons = Array.from(overlay.querySelectorAll('.add-coal-overlay'));
+  const coloredRects = Array.from(document.querySelectorAll('.bunker svg rect')).filter(r => r.getBoundingClientRect().width > 0 && r.getBoundingClientRect().height > 0);
+  const rectBoxes = coloredRects.map(r => r.getBoundingClientRect());
+  const rootStyle = getComputedStyle(document.documentElement);
+  const arrowHeadSize = parseFloat(rootStyle.getPropertyValue('--arrow-head-size')) || 10;
+
+  arrows.forEach((arrow, idx) => {
+    const btn = overlay.querySelector(`.add-coal-overlay[data-bunker="${idx}"]`);
+    if(!btn) return;
+    const arrowRect = arrow.getBoundingClientRect();
+
+    // tip coordinates relative to layout
+    const tipY = (arrowRect.top - layoutRect.top) + arrowRect.height + arrowHeadSize;
+    const tipX = (arrowRect.left - layoutRect.left) + (arrowRect.width / 2);
+
+    // compute button dimensions (fallbacks if not yet measured)
+    const btnHeight = (btn.offsetHeight && btn.offsetHeight > 0) ? btn.offsetHeight : 44;
+    const btnWidth  = (btn.offsetWidth  && btn.offsetWidth  > 0) ? btn.offsetWidth  : 44;
+
+    // keep horizontal centering via translateX; control vertical via top
+    btn.style.transform = 'translateX(-50%)';
+
+    // Place the button below the arrow tip. Increase this value to move button lower.
+    const baseBelowOffset = Math.round(btnHeight * 0.5) + 18; // try ~btnHeight*0.5 + 18px gap
+    let desiredTop = Math.round(tipY + baseBelowOffset);
+
+    // clamp inside layout area
+    const minTop = 8;
+    const maxTop = layoutRect.height - 8 - btnHeight;
+    if(desiredTop < minTop) desiredTop = minTop;
+    if(desiredTop > maxTop) desiredTop = maxTop;
+
+    // initial placement
+    btn.style.left = `${Math.round(tipX)}px`;
+    btn.style.top  = `${desiredTop}px`;
+
+    // if the button overlaps any important colored rects, nudge it further down (to avoid overlap)
+    let attempts = 0;
+    const maxAttempts = 10;
+    const stepDown = 8; // push down by 8px each attempt
+    let overlapped = false;
+    do {
+      const btnBox = btn.getBoundingClientRect();
+      overlapped = rectBoxes.some(rBox => rectsIntersect(btnBox, rBox));
+      if(overlapped){
+        desiredTop = Math.min(maxTop, desiredTop + stepDown);
+        btn.style.top = `${desiredTop}px`;
+      }
+      attempts++;
+    } while(overlapped && attempts < maxAttempts);
+
+    // final clamp/safety
+    const finalTop = Math.max(minTop, Math.min(maxTop, desiredTop));
+    btn.style.top = `${finalTop}px`;
+  });
+}
+
+
+  // compute sizes and ensure mills-grid fills available space but scrolls internally
+  function computeSizesAndApply(){
+    const navbar = document.querySelector('.navbar');
+    const inputSec = document.querySelector('.input-section');
+    const navH = navbar ? navbar.getBoundingClientRect().height : 0;
+    const inputH = inputSec ? inputSec.getBoundingClientRect().height : 0;
+    const reserved = 8;
+    const available = Math.max(220, Math.floor(window.innerHeight - navH - inputH - reserved));
+
+    // update CSS vars (px) so CSS clamp calculations become exact
+    document.documentElement.style.setProperty('--input-height', inputH + 'px');
+    document.documentElement.style.setProperty('--available-height', available + 'px');
+
+    // apply to main container and mills-grid
+    const mainContainer = document.querySelector('.main-container') || document.querySelector('.mills-grid')?.parentElement;
+    const mills = document.querySelector('.mills-grid');
+    if(mainContainer){
+      mainContainer.style.height = available + 'px';
+      mainContainer.style.overflow = 'hidden';
+      mainContainer.style.boxSizing = 'border-box';
+    }
+    if(mills){
+      mills.style.height = available + 'px';
+      mills.style.maxHeight = available + 'px';
+      mills.style.overflow = 'auto'; // allow internal scrolling
+      mills.style.boxSizing = 'border-box';
+      mills.style.paddingBottom = '8px';
+    }
+
+    // ensure diagram layout fits
+    const layout = document.querySelector('.diagram-in-grid .layout');
+    if(layout){
+      const target = Math.max(120, available - 40);
+      layout.style.height = target + 'px';
+      layout.style.maxHeight = target + 'px';
+      layout.style.boxSizing = 'border-box';
+      layout.style.overflow = 'visible'; // important: don't clip overlay
+    }
+  }
+
+  function refreshAll(){
+    createOverlayButtons();
+    computeSizesAndApply();
+    setTimeout(positionOverlayButtons, 45);
+  }
+
+  // wrap existing updateBunkerColors if present so overlays reposition after color updates
+  if(typeof window.updateBunkerColors === 'function' && !window.__wrappedUpdateBunkerColorsForTip_v3){
+    window.__wrappedUpdateBunkerColorsForTip_v3 = true;
+    const orig = window.updateBunkerColors;
+    window.updateBunkerColors = function(...args){
+      try{ orig.apply(this,args); }catch(e){ console.error(e); }
+      setTimeout(refreshAll, 80);
+    };
+  }
+
+  window.addEventListener('resize', function(){
+    if(window.__bunkerOverlayFix_resize) clearTimeout(window.__bunkerOverlayFix_resize);
+    window.__bunkerOverlayFix_resize = setTimeout(refreshAll, 90);
+  });
+  window.addEventListener('orientationchange', function(){ setTimeout(refreshAll, 150); });
+
+  document.addEventListener('DOMContentLoaded', function(){
+    refreshAll();
+    // run again after short delay to catch late layout shifts
+    setTimeout(refreshAll, 160);
+  });
+
+  // manual trigger for debugging/tweaks
+  window.__refreshBunkerOverlayAndFit = refreshAll;
+})();
 </script>
 
   <!-- external JS (keep your original external input.js if it contains savePayload or DB fetches) -->
@@ -2500,179 +2523,1010 @@ function attachToRects(){
 })();
 
 </script>
-<!-- Paste this block after your other scripts (once) -->
 
 <!-- <script>
+/* ---------- Patch: bunker totals + live "Next timer" countdowns (DELEGATING VERSION) ---------- */
 (function(){
-  if(window.__bunkerOverlayTipPatch_v2) return;
-  window.__bunkerOverlayTipPatch_v2 = true;
+  if(window.__bunkerTotalsPatch_vsafe) return;
+  window.__bunkerTotalsPatch_vsafe = true;
 
-  function ensureTopOverlay(){
-    const layout = document.querySelector('.diagram-in-grid .layout');
-    if(!layout) return null;
-    let overlay = layout.querySelector('.top-overlay');
-    if(!overlay){
-      overlay = document.createElement('div');
-      overlay.className = 'top-overlay';
-      layout.insertBefore(overlay, layout.firstChild);
+  const BUNKER_COUNT = 6;
+  const N = (typeof NUM_COAL_ROWS !== 'undefined') ? Number(NUM_COAL_ROWS) : (window.NUM_COAL_ROWS || 5);
+
+  const _origCalculateBlended = (typeof calculateBlended === 'function') ? calculateBlended : null;
+
+  function getBunkerPercentSum(bIndex){
+    let sum = 0;
+    for(let r=1; r<=N; r++){
+      sum += parseFloat(document.querySelector(`.percentage-input[data-row="${r}"][data-mill="${bIndex}"]`)?.value) || 0;
     }
-    return { layout, overlay };
+    return Math.max(0, Math.min(100, sum));
   }
 
-  function createOrSyncOverlayButtons(){
-    const res = ensureTopOverlay();
-    if(!res) return;
-    const { layout, overlay } = res;
-
-    const arrows = Array.from(layout.querySelectorAll('.arrow'));
-    const existing = Array.from(overlay.querySelectorAll('.add-coal-overlay'));
-
-    // Remove orphaned buttons
-    existing.forEach(btn=>{
-      const idx = Number(btn.dataset.bunker);
-      if(Number.isNaN(idx) || idx < 0 || idx >= arrows.length) btn.remove();
-    });
-
-    // Ensure one button per arrow
-    arrows.forEach((arrow, index) => {
-      let btn = overlay.querySelector(`.add-coal-overlay[data-bunker="${index}"]`);
-      if(!btn){
-        btn = document.createElement('button');
-        btn.className = 'add-coal-overlay';
-        btn.dataset.bunker = String(index);
-        btn.setAttribute('aria-label', `Add coal to bunker ${index+1}`);
-        btn.innerText = '+';
-        btn.addEventListener('click', function(ev){
-          ev.stopPropagation();
-          if(typeof window.openCoalPopup === 'function'){
-            window.openCoalPopup(index);
-          } else {
-            console.warn('openCoalPopup not found for add-coal-overlay');
-          }
-        });
-        overlay.appendChild(btn);
+  function updateBunkerTotalsUI(){
+    for(let m=0;m<BUNKER_COUNT;m++){
+      const el = document.querySelector(`.total-input[data-mill="${m}"]`);
+      const sumPct = getBunkerPercentSum(m);
+      if(el){
+        el.value = `${sumPct.toFixed(2)}%`;
+        el.dataset.percent = String(sumPct);
       }
-    });
-
-    // Position them
-    positionOverlayButtons();
+    }
   }
 
-  function rectsIntersect(a,b){
-    return !(b.left >= a.right || b.right <= a.left || b.top >= a.bottom || b.bottom <= a.top);
+  function getBunkerCapacityForIndex(bIndex){
+    const el1 = document.querySelector(`.bunker-capacity[data-mill="${bIndex}"]`);
+    if(el1) return Number(el1.value || el1.dataset.value || el1.textContent) || 0;
+    const el2 = document.getElementById('bunkerCapacity' + bIndex);
+    if(el2) return Number(el2.value || el2.dataset.value || el2.textContent) || 0;
+    const el3 = document.getElementById('bunkerCapacity');
+    if(el3) return Number(el3.value || el3.dataset.value || el3.textContent) || 0;
+    if(typeof getSingleBunkerCapacity === 'function') return Number(getSingleBunkerCapacity() || 0);
+    return 0;
   }
 
-  function positionOverlayButtons(){
-    const res = ensureTopOverlay();
-    if(!res) return;
-    const { layout, overlay } = res;
-    const layoutRect = layout.getBoundingClientRect();
-    const arrows = Array.from(layout.querySelectorAll('.arrow'));
-    const buttons = Array.from(overlay.querySelectorAll('.add-coal-overlay'));
-    const rects = Array.from(document.querySelectorAll('.bunker svg rect'));
-    const rectBoxes = rects.map(r => r.getBoundingClientRect());
-    const rootStyle = getComputedStyle(document.documentElement);
-    const arrowHeadSize = parseFloat(rootStyle.getPropertyValue('--arrow-head-size')) || 10;
+  function computeTotalBunkerSeconds_fallback(bIndex){
+    // prefer computeLayerSeconds if available (keeps parity)
+    if(typeof computeLayerSeconds === 'function'){
+      try{
+        const arr = computeLayerSeconds(bIndex) || [];
+        if(Array.isArray(arr) && arr.length) return arr.reduce((a,b)=>a + (Number(b)||0), 0);
+      }catch(e){}
+    }
+    const sumPct = getBunkerPercentSum(bIndex);
+    const bunkerCapacity = getBunkerCapacityForIndex(bIndex);
+    const flow = parseFloat(document.querySelector(`.flow-input[data-mill="${bIndex}"]`)?.value) || 0;
+    if(flow <= 0 || bunkerCapacity <= 0 || sumPct <= 0) return 0;
+    const hours = (sumPct / 100.0) * bunkerCapacity / flow;
+    return hours * 3600;
+  }
 
-    arrows.forEach((arrow, idx) => {
-      const btn = buttons.find(b=>Number(b.dataset.bunker) === idx);
-      if(!btn) return;
-      const arrowRect = arrow.getBoundingClientRect();
-      const tipY = (arrowRect.top - layoutRect.top) + arrowRect.height + arrowHeadSize;
-      const tipX = (arrowRect.left - layoutRect.left) + (arrowRect.width / 2);
+  function formatHMS_local(sec){
+    if(typeof formatHMS === 'function') return formatHMS(sec);
+    const s = Math.max(0, Math.floor(sec||0));
+    const hrs = Math.floor(s / 3600);
+    const mins = Math.floor((s % 3600) / 60);
+    const secs = s % 60;
+    return `${String(hrs).padStart(2,'0')}:${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+  }
 
-      // Default: put button slightly below the tip (8px)
-      let desiredTop = tipY + 8;
-      let attempts = 0;
-      const maxAttempts = 8;
-      const stepUp = 10;
-      let overlapped = false;
+  // New safe wrappedCalculateBlended: call original, update totals UI,
+  // and DELEGATE timer control to existing bunkerTimers/startOrUpdateBunkerTimer when present.
+  function wrappedCalculateBlended(){
+    // 1) run original blended calc if present (this may itself start canonical timers)
+    try{
+      if(typeof _origCalculateBlended === 'function'){
+        _origCalculateBlended();
+      }
+    } catch(err){
+      console.error('Error running original calculateBlended():', err);
+    }
 
-      // Apply left/top only (do NOT write transform here — CSS controls transform)
-      btn.style.left = `${tipX}px`;
-      btn.style.top = `${desiredTop}px`;
+    // 2) update totals UI
+    try{
+      updateBunkerTotalsUI();
+    } catch(err){
+      console.error('Error updating bunker totals UI:', err);
+    }
 
-      do {
-        // write left/top and measure; transform is left to CSS
-        btn.style.left = `${tipX}px`;
-        btn.style.top = `${desiredTop}px`;
-
-        const btnBox = btn.getBoundingClientRect();
-        overlapped = rectBoxes.some(rBox => rectsIntersect(btnBox, rBox));
-        if(overlapped){
-          desiredTop -= stepUp; // move up to avoid overlap
+    // 3) Timer coordination:
+    // If the canonical timer API exists (startOrUpdateBunkerTimer / clearBunkerTimer),
+    // do nothing — canonical logic already manages intervals and visuals.
+    // If it doesn't exist, compute totals and set timer display once (NO intervals).
+    const hasCanonical = (typeof window.startOrUpdateBunkerTimer === 'function' && typeof window.clearBunkerTimer === 'function' && Array.isArray(window.bunkerTimers));
+    try{
+      if(!hasCanonical){
+        // fallback: set one-shot timer-input text (no intervals)
+        for(let m=0;m<BUNKER_COUNT;m++){
+          const secs = Math.max(0, Math.floor(computeTotalBunkerSeconds_fallback(m) || 0));
+          const el = document.querySelector(`.timer-input[data-mill="${m}"]`);
+          if(el){
+            if(secs > 0){
+              el.value = formatHMS_local(secs);
+              el.dataset.seconds = String(secs);
+            } else {
+              el.value = '--';
+              el.dataset.seconds = '0';
+            }
+          }
         }
-        attempts++;
-      } while(overlapped && attempts < maxAttempts);
+      } else {
+        // canonical timers exist — nothing to do here. They already started/updated via original calculation.
+        // But to be safe, ensure visual sync: update timer-input for each bunker if bunkerTimers present.
+        for(let m=0;m<BUNKER_COUNT;m++){
+          try{
+            const t = (window.bunkerTimers && window.bunkerTimers[m]) ? window.bunkerTimers[m] : null;
+            const el = document.querySelector(`.timer-input[data-mill="${m}"]`);
+            if(el){
+              if(t && Number(t.layerRemaining) > 0){
+                el.value = formatHMS_local(Math.max(0, Math.floor(t.layerRemaining)));
+                el.dataset.seconds = String(Math.max(0, Math.floor(t.layerRemaining)));
+              } else {
+                // show nextBlend if present (some code shows nextBlend), or default to '--'
+                const next = document.getElementById(`nextBlend${m}`);
+                if(next && next.dataset && Number(next.dataset.seconds) > 0){
+                  el.value = formatHMS_local(Number(next.dataset.seconds));
+                  el.dataset.seconds = String(Math.max(0, Math.floor(Number(next.dataset.seconds))));
+                } else {
+                  el.value = '--';
+                  el.dataset.seconds = '0';
+                }
+              }
+            }
+          } catch(e){ /* ignore per-bunker errors */ }
+        }
+      }
+    }catch(e){
+      console.error('Error coordinating timers in wrappedCalculateBlended', e);
+    }
+  }
 
-      // clamp inside layout
-      const minTop = 8;
-      const maxTop = layoutRect.height - 8;
-      const finalTop = Math.max(minTop, Math.min(maxTop, desiredTop));
-      btn.style.top = `${finalTop}px`;
+  // install wrapper (idempotent)
+  window.calculateBlended = wrappedCalculateBlended;
+
+  // Run initial once if page already invoked original earlier
+  try{ wrappedCalculateBlended(); } catch(e){ /* ignore */ }
+
+  // Clean up on unload (nothing special to clear because we no longer create intervals here)
+  window.addEventListener('beforeunload', function(){
+    // no-op (canonical timers are responsible for their cleanup)
+  });
+})();
+</script>
+<script>
+/*
+  Timer-stability patch
+  - Prevents timers for bunker A restarting when bunker B is edited
+  - Adds a short "call-coalescing" guard so repeated calculateBlended() calls don't restart intervals
+  - Non-destructive: re-uses existing startOrUpdateBunkerTimer / clearBunkerTimer if present,
+    otherwise patches local implementations conservatively.
+*/
+
+(function(){
+  if(window.__bunkerTimerStabilityPatch) return;
+  window.__bunkerTimerStabilityPatch = true;
+
+  const BUNKER_COUNT = 6;
+  const ROWS = (typeof NUM_COAL_ROWS !== 'undefined') ? Number(NUM_COAL_ROWS) : (window.NUM_COAL_ROWS || 5);
+
+  // small helper tolerance
+  function arraysEqualRoundedTolerance(a,b,tolSeconds=1){
+    if(!a && !b) return true;
+    if(!a || !b) return false;
+    if(a.length !== b.length) return false;
+    for(let i=0;i<a.length;i++){
+      if(Math.abs((Number(a[i]||0) - Number(b[i]||0))) > tolSeconds) return false;
+    }
+    return true;
+  }
+
+  // Track the last mill index that triggered an input event (so we can avoid touching timers for others)
+  window.__lastChangedMill = undefined;
+  window.__lastChangedAt = 0;
+  function recordMillChange(millIndex){
+    window.__lastChangedMill = Number.isFinite(Number(millIndex)) ? Number(millIndex) : undefined;
+    window.__lastChangedAt = Date.now();
+    // clear after short time
+    setTimeout(()=>{ if(Date.now() - window.__lastChangedAt >= 1400) { window.__lastChangedMill = undefined; } }, 1500);
+  }
+
+  // Attach light-weight capturing listeners to set lastChangedMill whenever percentage/flow changes.
+  // This won't change your existing behavior, only records the origin of the change.
+  function attachOriginCapture() {
+    // percentage inputs
+    document.querySelectorAll('.percentage-input').forEach(el=>{
+      if(el.__originAttached) return;
+      el.__originAttached = true;
+      el.addEventListener('input', function(){ const idx = Number(this.dataset.mill); if(!Number.isNaN(idx)) recordMillChange(idx); }, {passive:true});
+    });
+    // flow inputs
+    document.querySelectorAll('.flow-input').forEach(el=>{
+      if(el.__originAttached) return;
+      el.__originAttached = true;
+      el.addEventListener('input', function(){ const idx = Number(this.dataset.mill); if(!Number.isNaN(idx)) recordMillChange(idx); }, {passive:true});
     });
   }
+  // run now and also on DOM changes
+  attachOriginCapture();
+  const mo = new MutationObserver(()=> { attachOriginCapture(); });
+  try { mo.observe(document.body, { childList:true, subtree:true }); } catch(e){ /* ignore */ }
 
-  function adjustHeights(){
-    const navbar = document.querySelector('.navbar');
-    const inputSec = document.querySelector('.input-section');
-    const mainContainer = document.querySelector('.main-container') || document.querySelector('.mills-grid')?.parentElement;
-    const mills = document.querySelector('.mills-grid');
+  // Wrap / patch startOrUpdateBunkerTimer to be idempotent & to avoid restarts when unchanged.
+  // If your page already defines startOrUpdateBunkerTimer, we wrap it; otherwise we provide a safe fallback wrapper.
+  const originalStartOrUpdate = window.startOrUpdateBunkerTimer;
+  const originalClear = window.clearBunkerTimer || window.clearBunkerTimer; // keep existing if any
+  const timerMeta = window.bunkerTimers || new Array(BUNKER_COUNT).fill(null);
 
-    const navH = navbar ? navbar.getBoundingClientRect().height : (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--navbar-height')) || 65);
-    const inputH = inputSec ? inputSec.getBoundingClientRect().height : 0;
-    const reserved = 8;
+  // store last-call timestamps to coalesce repeated calls
+  const lastCallAt = new Array(BUNKER_COUNT).fill(0);
 
-    const available = Math.max(200, window.innerHeight - navH - inputH - reserved);
+  function safeStartOrUpdate(b, layerSeconds, flow, bunkerCapacity){
+    try {
+      b = Number(b);
+      if(isNaN(b) || b < 0 || b >= BUNKER_COUNT) return;
+      const now = Date.now();
 
-    if(mainContainer){
-      mainContainer.style.height = available + 'px';
-      mainContainer.style.overflow = 'hidden';
-      mainContainer.style.boxSizing = 'border-box';
-    }
+      // normalize incoming layerSeconds to rounded integer seconds array
+      const normalized = (Array.isArray(layerSeconds) ? layerSeconds : []).map(x => Math.max(0, Math.round(Number(x)||0)));
 
-    if(mills){
-      mills.style.height = '100%';
-      mills.style.maxHeight = '100%';
-      mills.style.overflow = 'auto';
-      mills.style.boxSizing = 'border-box';
-      mills.style.paddingBottom = '8px';
+      // if canonical implementation present, prefer delegating to it but with guards to avoid bounce
+      if(typeof originalStartOrUpdate === 'function'){
+        const existing = (window.bunkerTimers && window.bunkerTimers[b]) ? window.bunkerTimers[b] : null;
+        // If existing timer running and lastConfig looks same (within tolerance) -> do nothing
+        if(existing && existing.intervalId && existing.lastConfig && arraysEqualRoundedTolerance(existing.lastConfig.layersSeconds || [], normalized, 1) && Math.abs((existing.lastConfig.flow||0)-(flow||0)) < 1e-6 && Math.abs((existing.lastConfig.bunkerCapacity||0)-(bunkerCapacity||0)) < 1e-6){
+          // update lastCallAt and exit (no restart)
+          lastCallAt[b] = now;
+          return;
+        }
+        // avoid restart storms: if we called recently and config unchanged, skip (coalescing)
+        if(existing && existing.intervalId && (now - (lastCallAt[b] || 0) < 1400) && arraysEqualRoundedTolerance(existing.lastConfig ? existing.lastConfig.layersSeconds||[] : [], normalized, 1) ){
+          lastCallAt[b] = now;
+          return;
+        }
+        // else delegate to original startOrUpdateBunkerTimer (it will handle normal start/clear)
+        try {
+          originalStartOrUpdate.call(window, b, normalized.slice(), Number(flow)||0, Number(bunkerCapacity)||0);
+        } catch(e){
+          // fallback to a safe local implementation below if original fails
+          console.warn('originalStartOrUpdate failed, falling back to local: ', e);
+          localStartOrUpdate(b, normalized, flow, bunkerCapacity);
+        }
+        lastCallAt[b] = now;
+        return;
+      } else {
+        // no canonical implementation: use local safe implementation
+        localStartOrUpdate(b, normalized, flow, bunkerCapacity);
+      }
+    } catch(err){
+      console.error('safeStartOrUpdate error', err);
     }
   }
 
-  function refreshOverlayAndHeights(){
-    createOrSyncOverlayButtons();
-    setTimeout(()=>{ positionOverlayButtons(); }, 50);
-    adjustHeights();
-  }
-
-  // Wrap updateBunkerColors if present
-  if(typeof window.updateBunkerColors === 'function' && !window.__wrappedUpdateBunkerColorsForTip_v2){
-    window.__wrappedUpdateBunkerColorsForTip_v2 = true;
-    const orig = window.updateBunkerColors;
-    window.updateBunkerColors = function(...args){
-      try{ orig.apply(this,args); }catch(e){ console.error(e); }
-      setTimeout(refreshOverlayAndHeights, 60);
+  // A small local fallback timer starter (only used if originalStartOrUpdate missing or failing)
+  function localStartOrUpdate(b, normalized, flow, bunkerCapacity){
+    const existing = timerMeta[b];
+    const now = Date.now();
+    // if existing running and config looks same -> keep it
+    if(existing && existing.intervalId && arraysEqualRoundedTolerance(existing.layersSeconds || [], normalized, 1) && Math.abs((existing.flow||0)-(flow||0)) < 1e-6 && Math.abs((existing.bunkerCapacity||0)-(bunkerCapacity||0)) < 1e-6){
+      lastCallAt[b] = now;
+      return;
+    }
+    // clear old
+    if(existing && existing.intervalId) { clearInterval(existing.intervalId); }
+    // find first positive layer
+    let startIndex = 0;
+    while(startIndex < normalized.length && (normalized[startIndex] || 0) <= 0) startIndex++;
+    if(startIndex >= normalized.length){
+      // nothing to start
+      timerMeta[b] = null;
+      // update UI timer inputs if present
+      const tEl = document.querySelector(`.timer-input[data-mill="${b}"]`);
+      if(tEl){ tEl.value = '--'; tEl.dataset.seconds = '0'; }
+      const nb = document.getElementById(`nextBlend${b}`); if(nb){ nb.value = '--'; nb.dataset.seconds = 0; }
+      return;
+    }
+    const obj = {
+      layersSeconds: normalized.slice(),
+      currentLayer: startIndex,
+      layerRemaining: Math.max(0, normalized[startIndex] || 0),
+      flow: Number(flow)||0,
+      bunkerCapacity: Number(bunkerCapacity)||0,
+      intervalId: null,
+      lastTouched: now
     };
+    // immediate UI
+    const tEl = document.querySelector(`.timer-input[data-mill="${b}"]`);
+    if(tEl) { tEl.value = formatHMS(obj.layerRemaining); tEl.dataset.seconds = String(Math.max(0, Math.floor(obj.layerRemaining))); }
+    const nb = document.getElementById(`nextBlend${b}`); if(nb){ nb.value = formatHMS(obj.layerRemaining); nb.dataset.seconds = String(Math.max(0, Math.floor(obj.layerRemaining))); }
+    // start tick
+    obj.intervalId = setInterval(()=>{
+      try{
+        obj.lastTouched = Date.now();
+        if(obj.layerRemaining > 0) obj.layerRemaining--;
+        if(obj.layerRemaining <= 0){
+          obj.currentLayer++;
+          if(obj.currentLayer >= obj.layersSeconds.length){
+            clearInterval(obj.intervalId);
+            timerMeta[b] = null;
+            const te = document.querySelector(`.timer-input[data-mill="${b}"]`);
+            if(te){ te.value = '--'; te.dataset.seconds = '0'; }
+            const ne = document.getElementById(`nextBlend${b}`); if(ne){ ne.value = '--'; ne.dataset.seconds = '0'; }
+            return;
+          }
+          obj.layerRemaining = Math.max(0, obj.layersSeconds[obj.currentLayer] || 0);
+        }
+        const te = document.querySelector(`.timer-input[data-mill="${b}"]`);
+        if(te){ te.value = formatHMS(Math.max(0, Math.floor(obj.layerRemaining))); te.dataset.seconds = String(Math.max(0, Math.floor(obj.layerRemaining))); }
+        const ne = document.getElementById(`nextBlend${b}`); if(ne){ ne.value = formatHMS(Math.max(0, Math.floor(obj.layerRemaining))); ne.dataset.seconds = String(Math.max(0, Math.floor(obj.layerRemaining))); }
+      } catch(e){ console.error('local timer tick err', e); }
+    }, 1000);
+    timerMeta[b] = obj;
+    // expose in global if window.bunkerTimers was present earlier
+    if(Array.isArray(window.bunkerTimers)) window.bunkerTimers[b] = obj;
   }
 
-  document.addEventListener('DOMContentLoaded', function(){
-    refreshOverlayAndHeights();
-    setTimeout(refreshOverlayAndHeights, 150);
-  });
+  // Replace global startOrUpdateBunkerTimer with our safeStartOrUpdate wrapper so all callers benefit.
+  window.startOrUpdateBunkerTimer = safeStartOrUpdate;
 
-  let resizeTimer = null;
-  window.addEventListener('resize', function(){
-    if(resizeTimer) clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(refreshOverlayAndHeights, 80);
-  });
-  window.addEventListener('orientationchange', function(){ setTimeout(refreshOverlayAndHeights, 120); });
+  // Ensure clearBunkerTimer delegates to original clear if present, else uses local
+  window.clearBunkerTimer = function(i){
+    try {
+      if(typeof originalClear === 'function') {
+        return originalClear(i);
+      }
+    } catch(e){ /* fallthrough */ }
 
-  // expose for debugging
-  window.__refreshBunkerOverlay = refreshOverlayAndHeights;
+    // local fallback
+    const t = (window.bunkerTimers && window.bunkerTimers[i]) ? window.bunkerTimers[i] : (timerMeta[i] || null);
+    if(t && t.intervalId) clearInterval(t.intervalId);
+    if(window.bunkerTimers && Array.isArray(window.bunkerTimers)) window.bunkerTimers[i] = null;
+    if(timerMeta[i]) timerMeta[i] = null;
+    const tEl = document.querySelector(`.timer-input[data-mill="${i}"]`);
+    if(tEl){ tEl.value = '--'; tEl.dataset.seconds = '0'; }
+    const nb = document.getElementById(`nextBlend${i}`); if(nb){ nb.value = '--'; nb.dataset.seconds = 0; }
+  };
+
+  // Patch calculateBlended so that when it's invoked due to a local mill change it avoids touching other bunkers' timers.
+  const origCalc = (typeof window.calculateBlended === 'function') ? window.calculateBlended : null;
+  function patchedCalculateBlended(maybeMill){
+    // Determine the origin mill:
+    // 1) If caller passed a mill, use it.
+    // 2) Else if window.__lastChangedMill was set recently, use that.
+    // 3) Else undefined (global update)
+    let originMill = undefined;
+    if(typeof maybeMill !== 'undefined' && maybeMill !== null && !Number.isNaN(Number(maybeMill))) originMill = Number(maybeMill);
+    else if(typeof window.__lastChangedMill !== 'undefined' && (Date.now() - (window.__lastChangedAt || 0) < 1600)) originMill = window.__lastChangedMill;
+
+    // call original calculation but prevent it from automatically restarting timers for other bunkers.
+    // Many original implementations call startOrUpdateBunkerTimer themselves; since we've replaced that function with our safe wrapper,
+    // it will coalesce and avoid restarting running timers. To be extra safe, we run original in try/catch and then do a light-sync for timers.
+    try{
+      if(typeof origCalc === 'function'){
+        // If original accepted an argument, forward originMill to allow original to optimize (best-effort).
+        try {
+          origCalc(originMill);
+        } catch(e) {
+          // fallback: call with no args
+          origCalc();
+        }
+      }
+    } catch(e){
+      console.error('original calculateBlended threw', e);
+    }
+
+    // After original runs, perform final sanity: only touch timers for the originMill (if defined).
+    try{
+      for(let m=0;m<BUNKER_COUNT;m++){
+        // if originMill defined and different, skip touching timer state for this bunker unless timer config changed noticeably
+        if(typeof originMill !== 'undefined' && originMill !== null && m !== originMill){
+          // Check if existing canonical timer present; if so, don't clear/start it.
+          const t = (window.bunkerTimers && window.bunkerTimers[m]) ? window.bunkerTimers[m] : null;
+          if(t && t.intervalId){
+            // already running — do not disturb
+            continue;
+          }
+          // If not running, it's fine to start/clear based on computed layers (let original handle it)
+        } else {
+          // originMill is this mill or no origin: compute layers and ensure timer exists if needed.
+          // Use the canonical computeLayerSeconds if available
+          const layers = (typeof computeLayerSeconds === 'function') ? (computeLayerSeconds(m) || []) : [];
+          const flow = parseFloat(document.querySelector(`.flow-input[data-mill="${m}"]`)?.value) || 0;
+          const bunkerCapacity = (typeof getSingleBunkerCapacity === 'function') ? Number(getSingleBunkerCapacity() || 0) : Number(document.getElementById('bunkerCapacity')?.value || 0);
+          const need = Array.isArray(layers) && layers.some(s => Number(s) > 1);
+          if(need){
+            safeStartOrUpdate(m, layers, flow, bunkerCapacity);
+          } else {
+            // don't clear a running timer for other bunker changes, only clear if this mill is origin or no origin.
+            if(typeof originMill === 'undefined' || originMill === m) {
+              window.clearBunkerTimer && window.clearBunkerTimer(m);
+            }
+          }
+        }
+      }
+    } catch(err){
+      console.error('post-calc timer sync error', err);
+    }
+
+    // finally call updateBunkerColors to sync visuals
+    try { if(typeof window.updateBunkerColors === 'function') window.updateBunkerColors(); } catch(e){ /* ignore */ }
+  }
+
+  // install patched calculateBlended
+  window.calculateBlended = patchedCalculateBlended;
+
+  // initial run to ensure we are in a good state
+  try{ patchedCalculateBlended(); } catch(e){ /* ignore */ }
+
+  console.log('[bunkerTimerStabilityPatch] installed — timers should no longer restart when editing other bunkers');
 })();
 </script> -->
 
+
+<!-- Paste this block after your other scripts (once) -->
+
+<script>
+/* Live per-bunker countdown manager
+   Requirements:
+   - Timer display inputs: #nextTimer0 ... #nextTimer5 (readonly, placeholder="hh:mm:ss")
+   - Percentage inputs: elements with class "percentage-input" and attribute data-mill="<bunkerIndex>"
+   - Flow inputs: elements with class "flow-input" and attribute data-mill="<bunkerIndex>"
+   - Single bunker capacity input: element with id "bunkerCapacity"
+*/
+(function(){
+  'use strict';
+  if(window.__liveBunkerTimers) return;
+  window.__liveBunkerTimers = true;
+
+  const BUNKER_COUNT = 6;
+
+  // small helpers
+  function pad2(n){ return String(n).padStart(2,'0'); }
+  function formatHMS(totalSeconds){
+    const s = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+    const hrs = Math.floor(s / 3600);
+    const mins = Math.floor((s % 3600) / 60);
+    const secs = s % 60;
+    return `${pad2(hrs)}:${pad2(mins)}:${pad2(secs)}`;
+  }
+
+  function parsePercent(raw){
+    if(raw == null) return 0;
+    let s = String(raw).trim();
+    if(s === '') return 0;
+    if(s.endsWith('%')) s = s.slice(0,-1);
+    const v = parseFloat(s);
+    return isFinite(v) ? v : 0;
+  }
+
+  function parseNumber(raw){
+    if(raw == null) return 0;
+    const v = parseFloat(String(raw).trim());
+    return isFinite(v) ? v : 0;
+  }
+
+  // compute sum of percent inputs for a bunker
+  function getTotalPercentForBunker(bIndex){
+    const nodes = document.querySelectorAll(`.percentage-input[data-mill="${bIndex}"]`);
+    let total = 0;
+    nodes.forEach(n => { total += parsePercent(n.value); });
+    if(total < 0) total = 0;
+    if(total > 100) total = 100;
+    return total;
+  }
+
+  function getBunkerCapacity(){
+    const el = document.getElementById('bunkerCapacity');
+    return el ? parseNumber(el.value) : 0;
+  }
+
+  function getFlowForBunker(bIndex){
+    const el = document.querySelector(`.flow-input[data-mill="${bIndex}"]`);
+    return el ? parseNumber(el.value) : 0;
+  }
+
+  // state per bunker
+  const timers = new Array(BUNKER_COUNT).fill(null).map(()=>({
+    intervalId: null,
+    remaining: 0,
+    lastKnownTotalSeconds: 0 // the computed "full seconds" used to start the timer
+  }));
+
+  function _updateTimerUI(bIndex){
+    const el = document.getElementById('nextTimer' + bIndex);
+    if(!el) return;
+    const rem = timers[bIndex].remaining || 0;
+    if(rem > 0){
+      el.value = formatHMS(rem);
+      el.dataset.seconds = String(Math.max(0, Math.floor(rem)));
+    } else {
+      // show placeholder by clearing value
+      el.value = '';
+      el.dataset.seconds = '0';
+    }
+  }
+
+  function clearBunkerTimer(bIndex){
+    const t = timers[bIndex];
+    if(!t) return;
+    if(t.intervalId){ clearInterval(t.intervalId); t.intervalId = null; }
+    t.remaining = 0;
+    t.lastKnownTotalSeconds = 0;
+    _updateTimerUI(bIndex);
+  }
+
+  // start or restart a bunker timer with the provided fullSeconds
+  // policy: if a timer is running and lastKnownTotalSeconds is within 1s -> do nothing (avoid resets)
+  // if different (>1s) or no timer -> start fresh
+  function setBunkerTimer(bIndex, fullSeconds){
+    bIndex = Number(bIndex);
+    if(isNaN(bIndex) || bIndex < 0 || bIndex >= timers.length) return;
+    const secs = Math.max(0, Math.floor(Number(fullSeconds) || 0));
+    const t = timers[bIndex];
+
+    if(secs <= 0){
+      clearBunkerTimer(bIndex);
+      return;
+    }
+
+    if(t.intervalId && Math.abs((t.lastKnownTotalSeconds||0) - secs) <= 1){
+      // active and practically same total — do not reset
+      return;
+    }
+
+    // if running and significantly different, clear first
+    if(t.intervalId) clearBunkerTimer(bIndex);
+
+    // start fresh countdown
+    t.remaining = secs;
+    t.lastKnownTotalSeconds = secs;
+    _updateTimerUI(bIndex);
+    t.intervalId = setInterval(()=>{
+      t.remaining = Math.max(0, t.remaining - 1);
+      if(t.remaining <= 0){
+        clearBunkerTimer(bIndex);
+      } else {
+        _updateTimerUI(bIndex);
+      }
+    }, 1000);
+  }
+
+  // compute seconds from the formula and call setBunkerTimer/clear
+  function computeAndStartForBunker(bIndex){
+    const totalPct = getTotalPercentForBunker(bIndex); // 0..100
+    const bunkerCap = getBunkerCapacity();
+    const flow = getFlowForBunker(bIndex);
+
+    if(totalPct <= 0 || bunkerCap <= 0 || flow <= 0){
+      clearBunkerTimer(bIndex);
+      return 0;
+    }
+
+    // hours = (totalPct/100 * bunkerCap) / flow
+    // seconds = hours * 3600
+    const hours = (totalPct / 100) * bunkerCap / flow;
+    const seconds = Math.max(0, Math.floor(hours * 3600));
+
+    setBunkerTimer(bIndex, seconds);
+    return seconds;
+  }
+
+  function computeAllAndStart(){
+    for(let i=0;i<BUNKER_COUNT;i++) computeAndStartForBunker(i);
+  }
+
+  // wire inputs to recompute for the right bunker(s)
+  function wireInputs(){
+    // percentages: recompute only that bunker on input/change
+    document.querySelectorAll('.percentage-input').forEach(inp => {
+      if(inp.__liveTimersWired) return;
+      inp.__liveTimersWired = true;
+      inp.addEventListener('input', function(){
+        const b = this.getAttribute('data-mill');
+        if(b === null) computeAllAndStart();
+        else computeAndStartForBunker(Number(b));
+      });
+      inp.addEventListener('change', function(){
+        const b = this.getAttribute('data-mill');
+        if(b === null) computeAllAndStart();
+        else computeAndStartForBunker(Number(b));
+      });
+    });
+
+    // flows: recompute only that bunker
+    document.querySelectorAll('.flow-input').forEach(inp => {
+      if(inp.__liveTimersWired) return;
+      inp.__liveTimersWired = true;
+      inp.addEventListener('input', function(){
+        const b = this.getAttribute('data-mill');
+        if(b === null) computeAllAndStart();
+        else computeAndStartForBunker(Number(b));
+      });
+      inp.addEventListener('change', function(){
+        const b = this.getAttribute('data-mill');
+        if(b === null) computeAllAndStart();
+        else computeAndStartForBunker(Number(b));
+      });
+    });
+
+    // bunkerCapacity: recompute all
+    const cap = document.getElementById('bunkerCapacity');
+    if(cap && !cap.__liveTimersWired){
+      cap.__liveTimersWired = true;
+      cap.addEventListener('input', computeAllAndStart);
+      cap.addEventListener('change', computeAllAndStart);
+    }
+  }
+
+  // init on DOM ready
+  function init(){
+    wireInputs();
+    // ensure timer UI elements exist; create no-op placeholders if missing
+    for(let i=0;i<BUNKER_COUNT;i++){
+      if(!document.getElementById('nextTimer'+i)){
+        // optional: create hidden input so _updateTimerUI won't fail
+        const fallback = document.createElement('input');
+        fallback.type = 'text';
+        fallback.id = 'nextTimer' + i;
+        fallback.className = 'timers-input';
+        fallback.style.display = 'none';
+        document.body.appendChild(fallback);
+      }
+    }
+    // initial compute
+    computeAllAndStart();
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  // expose for console debugging / manual controls
+  window.setBunkerTimer = setBunkerTimer;
+  window.clearBunkerTimer = clearBunkerTimer;
+  window.computeAndStartForBunker = computeAndStartForBunker;
+  window.computeAllAndStart = computeAllAndStart;
+
+  // cleanup on unload
+  window.addEventListener('beforeunload', function(){
+    for(let i=0;i<timers.length;i++) if(timers[i].intervalId) clearInterval(timers[i].intervalId);
+  });
+
+})();
+</script>
+<script>
+/*
+  Bunker total sync + live percent drain
+  - Matches your markup: .total-inputs[data-mill="X"], .percentage-input[data-mill="X"], .flow-input[data-mill="X"], #bunkerCapacity
+  - Adds stable ids bunkerTotal0..bunkerTotal5 for total inputs (attaches to existing .total-inputs if present)
+  - Exposes:
+      startBunkerDrain(bIndex, seconds)
+      stopBunkerDrain(bIndex)
+      computeSecondsAndStartAll()  // uses formula and starts timers for all
+*/
+
+(function(){
+  'use strict';
+  if(window.__bunkerPercentDrain) return;
+  window.__bunkerPercentDrain = true;
+
+  const BUNKER_COUNT = 6;
+  const NUM_ROWS = (typeof NUM_COAL_ROWS !== 'undefined') ? Number(NUM_COAL_ROWS) : (window.NUM_COAL_ROWS || 5);
+
+  // helper parsers/formatters
+  const parseNum = v => {
+    if(v == null) return 0;
+    let s = String(v).trim();
+    if(s === '') return 0;
+    if(s.endsWith('%')) s = s.slice(0,-1);
+    const n = parseFloat(s);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const fmtPct = n => (Number(n||0)).toFixed(2) + '%';
+
+  // internal state per bunker for draining
+  const drains = new Array(BUNKER_COUNT).fill(null).map(()=>({
+    intervalId: null,
+    initialTotal: 0,       // percent (0..100)
+    initialRowVals: [],    // [{el, origVal}]
+    initialSeconds: 0,
+    remaining: 0
+  }));
+
+  // ensure each bunker has a target total input with id bunkerTotal{i}
+  function ensureBunkerTotalInputs(){
+    for(let i=0;i<BUNKER_COUNT;i++){
+      let el = document.querySelector(`.total-inputs[data-mill="${i}"]`);
+      if(el){
+        // attach id if not present
+        if(!el.id) el.id = 'bunkerTotal' + i;
+      } else {
+        // if not present, create a visible input and append near the mills-grid if possible
+        const container = document.querySelector('.mills-grid') || document.querySelector('.main-container') || document.body;
+        const wrapper = document.createElement('div');
+        wrapper.className = 'mill';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'flow-input total-inputs';
+        input.setAttribute('data-mill', String(i));
+        input.placeholder = 'TPH';
+        input.id = 'bunkerTotal' + i;
+        wrapper.appendChild(input);
+        container.appendChild(wrapper);
+        el = input;
+      }
+    }
+  }
+
+  // compute sum of percentage rows for bunker
+  function computeRowSum(bIndex){
+    let sum = 0;
+    const rows = document.querySelectorAll(`.percentage-input[data-mill="${bIndex}"]`);
+    rows.forEach(r => {
+      sum += parseNum(r.value || r.dataset.percent || '');
+    });
+    // clamp
+    if(sum < 0) sum = 0;
+    if(sum > 100) sum = 100;
+    return sum;
+  }
+
+  // update bunker total UI from row inputs (call when rows change)
+  function updateBunkerTotalFromRows(bIndex){
+    const totalEl = document.getElementById('bunkerTotal' + bIndex) || document.querySelector(`.total-inputs[data-mill="${bIndex}"]`);
+    if(!totalEl) return;
+    const sum = computeRowSum(bIndex);
+    totalEl.value = fmtPct(sum);
+    totalEl.dataset.percent = String(Number(sum).toFixed(2));
+  }
+
+  // attach listeners to percentage inputs to update totals live
+  function wireRowInputs(){
+    document.querySelectorAll('.percentage-input').forEach(inp => {
+      if(inp.__bpd_wired) return;
+      inp.__bpd_wired = true;
+      inp.addEventListener('input', function(){
+        const b = this.getAttribute('data-mill');
+        if(b === null) {
+          // fallback: update all
+          for(let i=0;i<BUNKER_COUNT;i++) updateBunkerTotalFromRows(i);
+        } else {
+          updateBunkerTotalFromRows(Number(b));
+        }
+        // if a drain is running for the bunker, restart sync with the new totals
+        if(this && this.getAttribute('data-mill') !== null){
+          const bi = Number(this.getAttribute('data-mill'));
+          if(drains[bi].intervalId){
+            // restart drain with remaining seconds but updated initial breakdown
+            restartDrainWithCurrentValues(bi);
+          }
+        }
+      });
+      inp.addEventListener('change', () => inp.dispatchEvent(new Event('input', {bubbles:true})));
+    });
+  }
+
+  // helper to read bunker capacity and flow for a bunker (same formula inputs)
+  function getBunkerCapacity(){
+    const el = document.getElementById('bunkerCapacity');
+    if(!el) return 0;
+    return parseNum(el.value);
+  }
+  function getFlowForBunker(bIndex){
+    const el = document.querySelector(`.flow-input[data-mill="${bIndex}"]`);
+    if(!el) return 0;
+    return parseNum(el.value);
+  }
+
+  // compute seconds from formula: seconds = (totalPct/100 * bunkerCapacity) / flow * 3600
+  function computeSecondsForBunker(bIndex){
+    const totalPct = computeRowSum(bIndex);
+    const bunkerCap = getBunkerCapacity();
+    const flow = getFlowForBunker(bIndex);
+    if(totalPct <= 0 || bunkerCap <= 0 || flow <= 0) return 0;
+    const hours = (totalPct / 100) * bunkerCap / flow;
+    return Math.max(0, Math.floor(hours * 3600));
+  }
+
+  // internal: captures current row breakdown and sets drain.initialRowVals & initialTotal
+  function captureInitialBreakdown(bIndex){
+    const rows = Array.from(document.querySelectorAll(`.percentage-input[data-mill="${bIndex}"]`));
+    const vals = rows.map(el => ({ el, origVal: parseNum(el.value) }));
+    let total = vals.reduce((s,v)=> s + (Number(v.origVal)||0), 0);
+    // fallback to total-inputs if rows empty
+    if(total <= 0){
+      const totEl = document.getElementById('bunkerTotal' + bIndex) || document.querySelector(`.total-inputs[data-mill="${bIndex}"]`);
+      if(totEl) total = parseNum(totEl.value || totEl.dataset.percent || '');
+    }
+    if(total < 0) total = 0;
+    if(total > 100) total = 100;
+    return { vals, total };
+  }
+
+  // start drain for a bunker: reduces bunker total & row inputs linearly over specified seconds
+  function startBunkerDrain(bIndex, seconds){
+    bIndex = Number(bIndex);
+    if(isNaN(bIndex) || bIndex < 0 || bIndex >= BUNKER_COUNT) return;
+    const d = drains[bIndex];
+
+    // stop any previous drain cleanly
+    if(d.intervalId){ clearInterval(d.intervalId); d.intervalId = null; }
+
+    // capture current breakdown
+    const capture = captureInitialBreakdown(bIndex);
+    if(!capture || capture.total <= 0 || seconds <= 0){
+      // nothing meaningful to drain
+      // But still set total to computed sum (in case)
+      updateBunkerTotalFromRows(bIndex);
+      return;
+    }
+
+    d.initialRowVals = capture.vals;
+    d.initialTotal = capture.total;
+    d.initialSeconds = Math.max(1, Math.floor(Number(seconds) || 0));
+    d.remaining = d.initialSeconds;
+
+    // update UI initial state
+    const totalEl = document.getElementById('bunkerTotal' + bIndex) || document.querySelector(`.total-inputs[data-mill="${bIndex}"]`);
+    if(totalEl){
+      totalEl.value = fmtPct(d.initialTotal);
+      totalEl.dataset.percent = String(Number(d.initialTotal).toFixed(2));
+    }
+
+    // store initial total on dataset for convenience
+    const timerEl = document.getElementById('nextTimer' + bIndex);
+    if(timerEl) timerEl.dataset.fullSeconds = String(d.initialSeconds);
+
+    // tick every second
+    d.intervalId = setInterval(() => {
+      d.remaining = Math.max(0, d.remaining - 1);
+      const ratio = (d.remaining <= 0) ? 0 : (d.remaining / d.initialSeconds);
+      const remainingTotal = d.initialTotal * ratio;
+
+      // update total input
+      if(totalEl){
+        totalEl.value = fmtPct(remainingTotal);
+        totalEl.dataset.percent = String(Number(remainingTotal).toFixed(2));
+      }
+
+      // update rows proportionally
+      if(d.initialTotal > 0){
+        d.initialRowVals.forEach(item => {
+          const orig = Number(item.origVal) || 0;
+          const newv = orig * ratio;
+          if(newv <= 0.0001) item.el.value = '';
+          else item.el.value = Number(newv).toFixed(2);
+        });
+      }
+
+      // if completed, cleanup
+      if(d.remaining <= 0){
+        clearInterval(d.intervalId);
+        d.intervalId = null;
+        d.initialRowVals = [];
+        d.initialTotal = 0;
+        d.initialSeconds = 0;
+        d.remaining = 0;
+        // ensure final zeroed values
+        if(totalEl){ totalEl.value = fmtPct(0); totalEl.dataset.percent = '0'; }
+        const rowsNow = document.querySelectorAll(`.percentage-input[data-mill="${bIndex}"]`);
+        rowsNow.forEach(r => r.value = '');
+        if(timerEl) delete timerEl.dataset.fullSeconds;
+      }
+
+    }, 1000);
+  }
+
+  function stopBunkerDrain(bIndex){
+    bIndex = Number(bIndex);
+    if(isNaN(bIndex) || bIndex < 0 || bIndex >= BUNKER_COUNT) return;
+    const d = drains[bIndex];
+    if(d.intervalId){ clearInterval(d.intervalId); d.intervalId = null; }
+    d.initialRowVals = [];
+    d.initialTotal = 0;
+    d.initialSeconds = 0;
+    d.remaining = 0;
+  }
+
+  // If rows change while draining we restart the drain using the current remaining seconds but new breakdown
+  function restartDrainWithCurrentValues(bIndex){
+    const d = drains[bIndex];
+    if(!d || d.remaining <= 0) return;
+    // capture new breakdown
+    const capture = captureInitialBreakdown(bIndex);
+    // restart with remaining seconds but using new total/breakdown
+    stopBunkerDrain(bIndex);
+    // set initial values from capture and start draining for the remaining time
+    if(capture.total > 0){
+      // start with d.remaining seconds and new breakdown
+      // but to keep proportions consistent we treat the current remaining time as the "new full" so ratio mapping works:
+      const newFull = d.remaining; // seconds left will become the "duration" to drain the new total to zero
+      // set artificially initialSeconds = newFull and remaining = newFull so it drains to zero across newFull
+      const temp = { vals: capture.vals, total: capture.total, seconds: newFull };
+      // apply directly
+      drains[bIndex].initialRowVals = temp.vals;
+      drains[bIndex].initialTotal = temp.total;
+      drains[bIndex].initialSeconds = temp.seconds;
+      drains[bIndex].remaining = temp.seconds;
+      // start ticking
+      drains[bIndex].intervalId = setInterval(() => {
+        const dd = drains[bIndex];
+        dd.remaining = Math.max(0, dd.remaining - 1);
+        const ratio = (dd.remaining <= 0) ? 0 : (dd.remaining / dd.initialSeconds);
+        const remainingTotal = dd.initialTotal * ratio;
+        const totalEl = document.getElementById('bunkerTotal' + bIndex) || document.querySelector(`.total-inputs[data-mill="${bIndex}"]`);
+        if(totalEl) { totalEl.value = fmtPct(remainingTotal); totalEl.dataset.percent = String(Number(remainingTotal).toFixed(2)); }
+        if(dd.initialTotal > 0){
+          dd.initialRowVals.forEach(item => {
+            const orig = Number(item.origVal) || 0;
+            const newv = orig * ratio;
+            if(newv <= 0.0001) item.el.value = '';
+            else item.el.value = Number(newv).toFixed(2);
+          });
+        }
+        if(dd.remaining <= 0){
+          clearInterval(dd.intervalId); dd.intervalId = null; dd.initialRowVals = []; dd.initialTotal = 0; dd.initialSeconds = 0; dd.remaining = 0;
+          if(totalEl) { totalEl.value = fmtPct(0); totalEl.dataset.percent = '0'; }
+          document.querySelectorAll(`.percentage-input[data-mill="${bIndex}"]`).forEach(r => r.value = '');
+        }
+      }, 1000);
+    }
+  }
+
+  // computeSeconds & start for all: convenience helper using same formula
+  function computeSecondsAndStartAll(){
+    for(let i=0;i<BUNKER_COUNT;i++){
+      const secs = computeSecondsForBunker(i);
+      if(secs > 0){
+        // also update the bunker total before starting
+        updateBunkerTotalFromRows(i);
+        startBunkerDrain(i, secs);
+      } else {
+        // ensure total matches rows if no timer
+        updateBunkerTotalFromRows(i);
+        stopBunkerDrain(i);
+      }
+    }
+  }
+
+  // attach flows and bunkerCapacity change to re-calc seconds if desired (optional)
+  function wireFlowAndCapacity(){
+    document.querySelectorAll('.flow-input').forEach(inp => {
+      if(inp.__bpd_wired) return;
+      inp.__bpd_wired = true;
+      inp.addEventListener('input', () => {
+        // recompute seconds & restart if a drain is already running for that bunker
+        const b = inp.getAttribute('data-mill');
+        if(b !== null){
+          const bi = Number(b);
+          if(drains[bi].intervalId){
+            // restart drain using new computed secs but preserve remaining? we'll stop existing and start with new secs
+            stopBunkerDrain(bi);
+            const secs = computeSecondsForBunker(bi);
+            if(secs > 0) startBunkerDrain(bi, secs);
+          } else {
+            // just update totals
+            updateBunkerTotalFromRows(bi);
+          }
+        } else {
+          computeSecondsAndStartAll();
+        }
+      });
+      inp.addEventListener('change', ()=>inp.dispatchEvent(new Event('input',{bubbles:true})));
+    });
+
+    const cap = document.getElementById('bunkerCapacity');
+    if(cap && !cap.__bpd_wired){
+      cap.__bpd_wired = true;
+      cap.addEventListener('input', computeSecondsAndStartAll);
+      cap.addEventListener('change', computeSecondsAndStartAll);
+    }
+  }
+
+  // initialization
+  function init(){
+    ensureBunkerTotalInputs();
+    wireRowInputs();
+    wireFlowAndCapacity();
+    // set totals to current sums initially
+    for(let i=0;i<BUNKER_COUNT;i++) updateBunkerTotalFromRows(i);
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  // expose helpers globally
+  window.startBunkerDrain = startBunkerDrain;
+  window.stopBunkerDrain = stopBunkerDrain;
+  window.computeSecondsAndStartAll = computeSecondsAndStartAll;
+  window.updateBunkerTotalFromRows = updateBunkerTotalFromRows;
+
+})();
+</script>
 
 
 </body>
