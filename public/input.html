@@ -4,568 +4,368 @@
   <meta charset="UTF-8" />
   <title>Coal Blending Ratio — modified</title>
 <style>
-  /* =========================
-     Core variables & base reset
-     ========================= */
-  :root{
-    --bg: #F7F8FA;
-    --card: #fff;
-    --muted: #6b7280;
-    --accent: #02008a;
-    --navbar-height: 65px;
+ /* ================ Cleaned & tuned stylesheet ================ */
+/* Core variables */
+:root{
+  --bg: #F7F8FA;
+  --card: #fff;
+  --muted: #6b7280;
+  --accent: #02008a;
 
-    /* how much vertical space the input-section roughly takes.
-       tweak if your input section becomes taller. */
-    --input-height: 72px;
+  --navbar-height: 65px;
+  --input-height: 72px; /* change if your input-section grows */
 
-    /* available area for diagram / bunkers */
-    --available-height: calc(100vh - var(--navbar-height) - var(--input-height) - 40px);
+  /* available vertical area for diagram/mills */
+  --available-height: calc(100vh - var(--navbar-height) - var(--input-height) - 40px);
 
-    /* arrow / line defaults */
-    --bunker-top-line-distance: 30px;
-    --bunker-arrow-height: 120px;
-    --line-left-offset: 4%;
-    --line-right-offset: 8.2%;
-    --arrow-width: 2px;
-    --arrow-head-size: 10px;
-    --mills-vertical-gap: 12px;
+  /* layout tuning knobs */
+  --mills-gap: 12px;
+  --page-max: 1800px;         /* previously 1400px */
+  --diagram-inner-max: 1600px;     /* how wide the white diagram card can be (increase to enlarge) */
 
-    /* how far to translate the add button vertically (defaults -50% center -> -40% moves it lower) */
-    --add-coal-translate-y: -40%;
-  }
+  --bunker-top-line-distance: 30px;
+  --bunker-arrow-height: 120px;
+  --line-left-offset: 4%;
+  --line-right-offset: 8.2%;
+  --arrow-width: 2px;
+  --arrow-head-size: 10px;
 
-  /* Global box sizing + font smoothing */
-  *, *::before, *::after { box-sizing: border-box; }
+  --add-coal-translate-y: -40%;
+}
 
-  html, body {
-    height: 100%;
-    margin: 0;
-    background: var(--bg);
-    color: #111;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    font-family: Inter, system-ui, Arial, Helvetica, sans-serif;
+/* Box sizing & base text */
+*, *::before, *::after { box-sizing: border-box; }
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: #111;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-family: Inter, system-ui, Arial, Helvetica, sans-serif;
 
-    /* prevent page scroll; layout will fit into viewport */
-    overflow: hidden;
-  }
+  /* keep page fixed; .mills-grid will be scrollable */
+  overflow: hidden;
+}
 
-  /* hide DOM-only helpers */
-  #loader, #downloadPDF, .summary-table, #summaryHidden { display: none !important; }
+/* Hide dev helpers if present */
+#loader, #downloadPDF, .summary-table, #summaryHidden { display: none !important; }
 
+/* ================ NAVBAR ================ */
+.navbar {
+  width: 100%;
+  background-color: #f7f8fa;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: var(--navbar-height);
+  z-index: 1100;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.06);
+}
+.navbar img { max-height: calc(var(--navbar-height) - 10px); object-fit: contain; }
+.navbar h1 { margin: 0 12px; font-size: 20px; color: #000; font-weight:700; }
 
-  /* =========================
-     Navbar
-     ========================= */
-  .navbar {
-    width: 100%;
-    background-color: #f7f8fa;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 15px 20px;
-    position: fixed;
-    top: 0;
-    left: 0;
-    height: var(--navbar-height);
-    z-index: 1100;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.06);
-  }
-  .navbar img {
-    height: 95px;
-    max-height: calc(var(--navbar-height) - 10px);
-    margin-right: 10px;
-    object-fit: contain;
-  }
-  .navbar h1 { margin: 0 12px; font-size: 20px; color: #000; font-weight:700; letter-spacing:0.2px; }
-  .nav-buttons { display:flex; gap:10px; align-items:center; margin-right:8px; }
-  .navbar button {
-    padding: 10px 15px;
-    background-color: var(--accent);
-    color: #fff;
-    border: none;
-    cursor: pointer;
-    border-radius: 6px;
-    font-weight: 700;
-  }
-  .navbar button:hover { background-color: #001cbb; }
+/* ================ INPUT SECTION ================ */
+.input-section {
+  position: relative;
+  margin: calc(var(--navbar-height) + 8px) auto 8px;
+  z-index: 1000;
+  padding: 8px 12px;
+  background: var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 6px 22px rgba(2,8,23,0.06);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: fit-content;
+  min-width: 96px;
+  max-width: 100%;
+  font-size: 13px;
+  min-height: var(--input-height);
+}
+.input-section label { font-size: 12px; font-weight:600; color:#fff; white-space:nowrap; margin:0; }
+.input-section .input-box {
+  padding:6px 8px; border-radius:6px; border:1px solid #d6d6d6; background:#fff;
+  width:112px; height:34px; font-size:13px; box-sizing:border-box;
+}
 
+/* Save button */
+#saveBtn { background: #ef4444; color: #fff; padding:8px 12px; border-radius:8px; border:none; cursor:pointer; }
 
-  /* =========================
-     Input section (kept in-flow)
-     ========================= */
-  .input-section {
-    position: relative;
-    margin: calc(var(--navbar-height) + 8px) auto 8px auto;
-    z-index: 1000;
-    padding: 6px 10px;
-    background: var(--accent);
-    border-radius: 8px;
-    box-shadow: 0 6px 22px rgba(2,8,23,0.06);
-    display: flex;
-    flex-direction: row;
-    gap: 8px;
-    align-items: center;
-    width: fit-content;
-    min-width: 96px;
-    max-width: 100%;
-    font-size: 13px;
-    /* ensure input-section height is consistent for --input-height usage */
-    min-height: var(--input-height);
-  }
-  .input-section label {
-    font-size: 12px;
-    font-weight: 600;
-    color: #fff;
-    margin: 0;
-    white-space: nowrap;
-  }
-  .input-section .input-box {
-    padding: 6px 8px;
-    font-size: 13px;
-    border: 1px solid #d6d6d6;
-    border-radius: 6px;
-    outline: none;
-    background: #fff;
-    width: 112px;
-    height: 34px;
-    line-height: 1;
-    box-sizing: border-box;
-  }
-  .input-section .input-box:focus {
-    border-color: #007bff;
-    box-shadow: 0 0 6px rgba(0,123,255,0.14);
-  }
+/* ================ MAIN / CENTERING ================ */
+/* center main content and cap width */
+.main-container {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 0 12px;
+  box-sizing: border-box;
+    width: 100%; /* add this */
+}
 
-  /* Save / Submit button */
-  #saveBtn {
-    position: relative;
-    display: inline-block;
-    background: red;
-    color: #fff;
-    border: none;
-    padding: 8px 12px;
-    font-size: 13px;
-    border-radius: 8px;
-    cursor: pointer;
-    box-shadow: 0 8px 24px rgba(2,8,23,0.14);
-    transition: transform .08s ease, box-shadow .12s;
-    min-width: 72px;
-    text-align: center;
-  }
-  #saveBtn:active { transform: translateY(1px); }
+/* mills-grid: left label column + 6 flexible columns (one per bunker) */
+.mills-grid {
+  display: grid;
+  grid-template-columns: 180px repeat(6, 1fr); /* wider left column helps center */
+  gap: var(--mills-gap);
+  align-items: start;
+  padding: 6px 12px 12px;
+  width: 100%;
+  box-sizing: border-box;
 
+  /* use remaining vertical area and allow internal scroll */
+  max-height: calc(100vh - var(--navbar-height) - var(--input-height));
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
 
-  /* =========================
-     Main grid & mapping
-     ========================= */
-  .mills-grid {
-    display: grid;
-    grid-template-columns: 150px repeat(6, 1fr);
-    gap: var(--mills-vertical-gap);
-    align-items: start;
-    padding: 6px 12px 12px 12px;
-    width: 100%;
-    box-sizing: border-box;
+/* thin, unobtrusive scrollbar (optional) */
+.mills-grid::-webkit-scrollbar { width: 9px; height: 9px; }
+.mills-grid::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 8px; }
 
-    /* force mills-grid to use the remaining vertical space */
-    max-height: calc(100vh - var(--navbar-height) - var(--input-height));
-    overflow: hidden; /* no internal scrolling; content must fit */
-  }
+/* left headers */
+.mills-grid > .mill.coal-flow,
+.mills-grid > .mill.next-timer,
+.mills-grid > .mill.bunker-total {
+  grid-column: 1;
+  display:flex !important;
+  align-items:center;
+  justify-content:flex-start;
+  padding:6px 8px;
+  font-weight:700;
+  color:var(--muted);
+  font-size:13px;
+  height:36px;
+  gap:6px;
+}
 
-  /* left header cells (Coal Flow / Next timer / Bunker Total) */
-  .mills-grid > .mill.coal-flow,
-  .mills-grid > .mill.next-timer,
-  .mills-grid > .mill.bunker-total {
-    grid-column: 1;
-    display: flex !important;
-    align-items: center;
-    justify-content: flex-start;
-    padding: 6px 8px;
-    background: transparent;
-    font-weight: 700;
-    color: var(--muted);
-    font-size: 13px;
-    line-height: 1;
-    height: 36px;
-    gap: 6px;
-  }
+/* hide developer-only fields */
+.mills-grid .dropdown,
+.mills-grid .percentage-input,
+.mills-grid .gcv,
+.mills-grid .cost-head,
+.mills-grid .gcv-box,
+.mills-grid .cost-input,
+.mills-grid .aft-head,
+.mills-grid .aft,
+.mills-grid .next-blend-box,
+.mills-grid .mill.green,
+.mills-grid .mill[readonly] { display: none !important; }
 
-  /* hide many non-essential fields kept for logic */
-  .mills-grid .dropdown,
-  .mills-grid .percentage-input,
-  .mills-grid .gcv,
-  .mills-grid .cost-head,
-  .mills-grid .gcv-box,
-  .mills-grid .cost-input,
-  .mills-grid .aft-head,
-  .mills-grid .aft,
-  .mills-grid .next-blend-boxs,
-  .mills-grid .mill.green,
-  .mills-grid .mill[readonly] {
-    display: none !important;
-  }
+/* default hide then selectively show mills that contain inputs */
+.mills-grid > .mill { display: none !important; }
+.mills-grid > .mill.coal-flow { display:flex !important; padding-left:6px; }
 
-  /* default: hide all .mill direct children; selectively show those with flow/timer/total inputs */
-  .mills-grid > .mill { display: none !important; }
+/* show columns that contain relevant inputs */
+.mills-grid > .mill:has(.flow-input),
+.mills-grid > .mill:has(.timer-input),
+.mills-grid > .mill:has(.total-input) {
+  display:flex !important;
+  align-items:center;
+  justify-content:flex-start;
+  padding:4px 6px !important;
+}
 
-  /* show header coal-flow cell */
-  .mills-grid > .mill.coal-flow { display:flex !important; padding-left:6px; font-weight:700; color:var(--muted); font-size:14px; }
+/* place each data-mill into its column 2..7 */
+.mills-grid > .mill:has([data-mill="0"]) { grid-column: 2; }
+.mills-grid > .mill:has([data-mill="1"]) { grid-column: 3; }
+.mills-grid > .mill:has([data-mill="2"]) { grid-column: 4; }
+.mills-grid > .mill:has([data-mill="3"]) { grid-column: 5; }
+.mills-grid > .mill:has([data-mill="4"]) { grid-column: 6; }
+.mills-grid > .mill:has([data-mill="5"]) { grid-column: 7; }
 
-  /* show mill containers that have .flow-input/.timer-input/.total-input */
-  .mills-grid > .mill:has(.flow-input),
-  .mills-grid > .mill:has(.timer-input),
-  .mills-grid > .mill:has(.total-input) {
-    display: flex !important;
-    align-items: center;
-    justify-content: flex-start;
-    padding: 4px 6px !important;
-  }
+/* inputs: fill their cell (no fixed max width so they scale with column) */
+.flow-input,
+.timer-input,
+.next-blend-box,
+.total-input {
+  width: 100%;
+  max-width: none;
+  min-width: 56px;
+  padding: 6px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid #e6e6e6;
+  font-size: 14px;
+  text-align: center;
+  background: #fff;
+  box-sizing: border-box;
+}
 
-  /* map data-mill 0..5 to columns 2..7 */
-  .mills-grid > .mill:has(.flow-input[data-mill="0"]),
-  .mills-grid > .mill:has(.timer-input[data-mill="0"]),
-  .mills-grid > .mill:has(.total-input[data-mill="0"]) { grid-column: 2; }
-  .mills-grid > .mill:has(.flow-input[data-mill="1"]),
-  .mills-grid > .mill:has(.timer-input[data-mill="1"]),
-  .mills-grid > .mill:has(.total-input[data-mill="1"]) { grid-column: 3; }
-  .mills-grid > .mill:has(.flow-input[data-mill="2"]),
-  .mills-grid > .mill:has(.timer-input[data-mill="2"]),
-  .mills-grid > .mill:has(.total-input[data-mill="2"]) { grid-column: 4; }
-  .mills-grid > .mill:has(.flow-input[data-mill="3"]),
-  .mills-grid > .mill:has(.timer-input[data-mill="3"]),
-  .mills-grid > .mill:has(.total-input[data-mill="3"]) { grid-column: 5; }
-  .mills-grid > .mill:has(.flow-input[data-mill="4"]),
-  .mills-grid > .mill:has(.timer-input[data-mill="4"]),
-  .mills-grid > .mill:has(.total-input[data-mill="4"]) { grid-column: 6; }
-  .mills-grid > .mill:has(.flow-input[data-mill="5"]),
-  .mills-grid > .mill:has(.timer-input[data-mill="5"]),
-  .mills-grid > .mill:has(.total-input[data-mill="5"]) { grid-column: 7; }
+/* ================ DIAGRAM / BUNKERS ================ */
+/* diagram occupies the same 6 center columns and centers itself */
+.diagram-in-grid {
+  grid-column: 2 / span 6;
+  justify-self: center;   /* center across the span */
+  align-self: start;
+  width: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+}
 
-  /* force display helpers */
-  .mills-grid > .mill.show-row { display:flex !important; }
-  .mills-grid > .mill.show-row input.next-blend-boxs,
-  .mills-grid > .mill.show-row input { display: block !important; width: 100%; box-sizing: border-box; }
+/* the white card inside the diagram; center it and cap width */
+.diagram-in-grid .layout {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 8px 30px rgba(2,8,23,0.06);
+  position: relative;
+  overflow: visible; /* must be visible so overlay + is never clipped */
 
-  /* Inputs styles (shared) */
-  .flow-input,
-  .timer-input,
-  .next-blend-box,
-  .total-input {
-    width: 100%;
-    max-width: 140px;
-    min-width: 64px;
-    padding: 6px;
-    height: 34px;
-    border-radius: 8px;
-    border: 1px solid #e6e6e6;
-    font-size: 14px;
-    text-align: center;
-    background: #fff;
-    box-sizing: border-box;
-  }
-  .total-input[readonly] { background: #fff; color: #111; }
+  /* control how big the white area becomes (increase to make diagram wider) */
+  max-width: var(--diagram-inner-max);
+  width: 100%;
+  margin: 0 auto;
 
-  .coal-flow { font-weight:700; color:var(--muted); font-size:14px; padding-left:6px; }
+  /* vertical sizing: make diagram big but not so large it pushes everything off-screen */
+  min-height: 220px;
+  height: min(640px, calc(var(--available-height) * 0.62));
+}
 
+/* bunkers grid inside the white card — matches the input columns (6) */
+.bunkers-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 18px;
+  align-items: end;
+  padding: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
 
-  /* =========================
-     Diagram / Bunkers
-     ========================= */
-  .diagram-in-grid { display:block !important; grid-column: 2 / span 6; padding: 6px !important; }
-  .diagram-in-grid .layout {
-    background: var(--card);
-    border-radius: 12px;
-    padding: 12px;
-    box-shadow: 0 6px 18px rgba(2,8,23,0.06);
-    position: relative;
-    overflow: hidden; /* prevent additional scrolling */
-    min-height: 320px;
-    /* make layout fit available height */
-    height: min(560px, calc(var(--available-height)));
-  }
+/* each bunker cell centers its SVG; height clamped so it scales nicely */
+.bunker {
+  position: relative;
+  display:flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: clamp(120px, calc(var(--available-height) * 0.44), 420px);
+}
 
-  .bunkers-grid {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 14px;
-    align-items: end;
-    padding: 10px;
-    height: 100%;
-    box-sizing: border-box;
-  }
+/* SVG will scale to the cell width while maintaining aspect ratio.
+   80% gives padding inside each cell so label/overlay have room. */
+.bunker svg {
+  width: 80%;
+  height: auto;
+  max-height: 380px;
+  display: block;
+}
 
-  /* bunker heights now scale to the available viewport area so page won't scroll */
-  .bunker {
-    position: relative;
-    /* clamp so it never becomes too small or too large */
-    height: clamp(190px, calc(var(--available-height) * 0.78), 460px);
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:flex-end;
-  }
-  .bunker svg { width:100%; height:100%; max-width:320px; max-height:420px; display:block; object-fit:contain; }
-  .bunker .label {
-    position:absolute;
-    bottom:12px;
-    left:50%;
-    transform:translateX(-50%);
-    font-size:14px;
-    background:rgba(255,255,255,0.95);
-    padding:8px 12px;
-    border-radius:10px;
-    box-shadow:0 2px 10px rgba(0,0,0,0.06);
-    white-space:nowrap;
-  }
+/* bunker label */
+.bunker .label {
+  position: absolute;
+  bottom: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  background: rgba(255,255,255,0.95);
+  padding: 6px 10px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  white-space: nowrap;
+}
 
-  /* per-bunker add button hidden (we use overlay button) */
-  .bunker .add-coal-btn { display: none !important; }
+/* hide per-bunker button (we use overlay buttons) */
+.bunker .add-coal-btn { display: none !important; }
 
-  /* overlay add button styles (placed in .top-overlay)
-     moved slightly lower by adjusting the translateY variable */
-  .add-coal-overlay {
-    position: absolute;
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    border: none;
-    background: #0ea5a4;
-    color: #fff;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 22px;
-    cursor: pointer;
-    box-shadow: 0 6px 18px rgba(2,6,23,0.14);
-    z-index: 1200;
-    /* previously translate(-50%,-50%) - now uses variable so we can move it down easily */
-    transform: translate(-50%, var(--add-coal-translate-y));
-    pointer-events: auto;
-  }
-  .add-coal-overlay:active { transform: translate(-50%, var(--add-coal-translate-y)) scale(.98); }
+/* overlay + buttons — absolutely positioned by script */
+.top-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 1200; }
+.top-overlay .add-coal-overlay {
+  position: absolute;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  font-size: 22px;
+  background: #0ea5a4;
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(2,6,23,0.14);
+  transform: translate(-50%, var(--add-coal-translate-y));
+  cursor: pointer;
+  z-index: 1300;
+}
 
-  /* popup */
-  .popup { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.35); z-index:1500; }
-  .popup.hidden { display:none; }
-  .popup-content {
-    background:#fff;
-    padding:18px;
-    border-radius:12px;
-    width:420px;
-    box-shadow:0 10px 40px rgba(2,6,23,0.18);
-  }
-  .popup-content h3 { margin:0 0 10px 0; font-size:18px; }
-  .popup-row { display:flex; gap:12px; margin:10px 0; align-items:center; }
-  .popup-row label { min-width:90px; font-size:14px; color:#444; }
-  .popup-row select, .popup-row input { flex:1; padding:10px; border-radius:8px; border:1px solid #e6e6e6; font-size:15px; }
-  .popup-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:14px; }
-  .btn { padding:10px 14px; border-radius:8px; border:none; cursor:pointer; font-size:14px; }
-  .btn-save { background:#0ea5a4; color:#fff; }
-  .btn-cancel { background:#f3f4f6; }
-  .btn-clear { background:#ef4444; color:#fff; }
+/* top line & arrows */
+.top-line {
+  position: absolute;
+  top: var(--bunker-top-line-distance);
+  left: var(--line-left-offset);
+  right: var(--line-right-offset);
+  height: 2px;
+  background: #000;
+}
+.arrow {
+  position: absolute;
+  width: var(--arrow-width);
+  background: #000;
+  top: var(--bunker-top-line-distance);
+  height: var(--bunker-arrow-height);
+  transform-origin: top center;
+}
+.arrow::after {
+  content: '';
+  position: absolute;
+  left: calc(50% - 7px);
+  top: 100%;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: var(--arrow-head-size) solid #000;
+}
 
-  /* bunker tooltip */
-  .bunker .tooltip {
-    position:absolute;
-    bottom:100%;
-    left:50%;
-    transform:translateX(-50%);
-    background:rgba(0,0,0,0.85);
-    color:#fff;
-    padding:8px 12px;
-    border-radius:8px;
-    font-size:13px;
-    line-height:1.4;
-    white-space: pre-line;
-    display:none;
-    z-index:9999;
-    min-width:160px;
-    text-align:left;
-    pointer-events:none;
-  }
-  .bunker:hover .tooltip { display:block; }
+/* ================ POPUP / TOOLTIP ================ */
+.popup { position: fixed; inset: 0; display:flex; align-items:center; justify-content:center; background: rgba(0,0,0,0.35); z-index:1500; }
+.popup.hidden { display:none; }
+.popup-content { background:#fff; padding:18px; border-radius:12px; width:420px; box-shadow:0 10px 40px rgba(2,6,23,0.18); }
 
-  /* top overlay / arrows / line */
-  .top-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 90; }
-  .top-line {
-    position: absolute;
-    top: var(--bunker-top-line-distance);
-    left: var(--line-left-offset);
-    right: var(--line-right-offset);
-    height: 2px;
-    background: #000;
-  }
-  .arrow {
-    position: absolute;
-    width: var(--arrow-width);
-    background: #000;
-    top: var(--bunker-top-line-distance);
-    height: var(--bunker-arrow-height);
-    transform-origin: top center;
-  }
-  .arrow::after {
-    content: '';
-    position: absolute;
-    left: calc(50% - 7px);
-    top: 100%;
-    width: 0;
-    height: 0;
-    border-left: 7px solid transparent;
-    border-right: 7px solid transparent;
-    border-top: var(--arrow-head-size) solid #000;
-  }
+/* tooltip */
+.bunker .tooltip { display: none; position:absolute; bottom:100%; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.85); color:#fff; padding:8px 12px; border-radius:8px; font-size:13px; pointer-events:none; }
+.bunker:hover .tooltip { display:block; }
 
-  /* small visual density & compact tweaks */
-  .diagram-in-grid .layout { box-shadow: 0 6px 18px rgba(2,8,23,0.06); }
-  .bunkers-grid { gap: 14px; padding: 10px; }
+/* ================ RESPONSIVE ================ */
+@media (max-width: 1200px) {
+  :root { --page-max: 1100px; --diagram-inner-max: 900px; }
+  .main-container { padding: 0 10px; }
+  .bunker svg { max-height: 320px; }
+  .diagram-in-grid .layout { height: calc(var(--available-height) * 0.58); }
+}
 
-  /* responsive adjustments - keep the scaling behavior so everything fits */
-  @media (max-width:1100px) {
-    :root { --bunker-top-line-distance: 30px; --bunker-arrow-height: 140px; --available-height: calc(100vh - var(--navbar-height) - var(--input-height) - 60px); }
-    .input-section { padding: 6px 10px; gap:8px; margin: calc(var(--navbar-height) + 6px) 12px 8px 12px; width: auto; }
-    .bunker { height: clamp(190px, calc(var(--available-height) * 0.78), 420px); }
-    .bunker svg { max-width: 280px; max-height: 380px; }
-    .bunkers-grid { grid-template-columns: repeat(3, 1fr); gap:18px; padding:14px; }
-    .flow-input, .timer-input, .total-input { max-width: 110px; height: 32px; font-size: 13px; }
-    .mills-grid { gap: 10px; padding: calc(var(--navbar-height) + 12px) 10px 18px 10px; }
-    .diagram-in-grid .layout { min-height: 320px; height: calc(var(--available-height)); }
-    .add-coal-overlay { width: 40px; height: 40px; font-size: 20px; }
-  }
+@media (max-width: 900px) {
+  :root { --page-max: 980px; --diagram-inner-max: 860px; }
+  .mills-grid { grid-template-columns: 140px repeat(6, 1fr); gap:10px; padding: 10px; }
+  .diagram-in-grid .layout { height: calc(var(--available-height) * 0.5); min-height:200px; }
+  .bunkers-grid { gap:12px; }
+  .bunker svg { width: 86%; max-height: 260px; }
+  .top-overlay .add-coal-overlay { width: 40px; height: 40px; font-size: 20px; }
+}
 
-  @media (max-width:700px) {
-    :root { --navbar-height: 56px; --bunker-top-line-distance: 26px; --bunker-arrow-height: 110px; --available-height: calc(100vh - var(--navbar-height) - var(--input-height) - 70px); --add-coal-translate-y: -35%; }
-    .navbar { height: var(--navbar-height); padding: 10px 14px; }
-    .navbar img { height: 44px; max-height: calc(var(--navbar-height) - 6px); }
-    .input-section {
-      position: relative;
-      margin: calc(var(--navbar-height) + 12px) 12px 12px 12px;
-      flex-direction: column;
-      align-items: stretch;
-      gap: 6px;
-      padding: 8px;
-      max-width: calc(100% - 24px);
-      border-radius: 8px;
-      width: auto;
-    }
-    .input-section label { font-size: 12px; }
-    .input-section .input-box { font-size: 13px; padding:6px 8px; width: 100%; height: 36px; }
+@media (max-width: 600px) {
+  /* stack behavior: diagram will span full width and bunkers reduce to 3/2 columns */
+  .mills-grid { grid-template-columns: 120px repeat(6, minmax(56px, 1fr)); gap:8px; padding: 8px; }
+  .diagram-in-grid { grid-column: 1 / -1; }
+  .diagram-in-grid .layout { max-width: 100%; height: calc(var(--available-height) * 0.46); min-height:160px; }
+  .bunkers-grid { grid-template-columns: repeat(3, 1fr); gap:10px; }
+  .bunker svg { width: 90%; max-height: 220px; }
+  .top-overlay .add-coal-overlay { width: 36px; height: 36px; font-size:18px; }
+}
 
-    .bunkers-grid { grid-template-columns: repeat(3, 1fr); gap:18px; padding:14px; }
-    .bunker { height: clamp(190px, calc(var(--available-height) * 0.75), 340px); }
-    .bunker svg { max-width: 220px; max-height: 300px; }
-    .bunker .label { font-size:13px; padding:6px 10px; }
-    .flow-input, .timer-input, .total-input { max-width: 100%; height: 36px; font-size: 13px; padding:6px; }
+/* small screens */
+@media (max-width: 420px) {
+  :root { --input-height: 88px; }
+  .mills-grid { grid-template-columns: 110px repeat(6, minmax(48px, 1fr)); gap:6px; padding: 8px; }
+  .diagram-in-grid .layout { height: calc(var(--available-height) * 0.38); min-height:140px; }
+  .bunker svg { max-height: 160px; }
+  .input-section { flex-direction: column; width: calc(100% - 24px); margin: calc(var(--navbar-height) + 8px) 12px 8px; }
+}
 
-    .mills-grid { grid-template-columns: 120px repeat(6, 1fr); gap:10px; padding: calc(var(--navbar-height) + 12px) 8px 16px 8px; }
-    .diagram-in-grid .layout { min-height: 280px; height: calc(var(--available-height)); }
-    .add-coal-overlay { width: 40px; height: 40px; }
-  }
-
-  @media (max-width:480px) {
-    :root { --navbar-height: 52px; --bunker-top-line-distance: 22px; --bunker-arrow-height: 90px; --available-height: calc(100vh - var(--navbar-height) - var(--input-height) - 90px); --add-coal-translate-y: -30%; }
-    .navbar { height: var(--navbar-height); padding:8px 10px; }
-    .navbar img { height: 38px; max-height: calc(var(--navbar-height) - 6px); margin-right:8px; }
-
-    .input-section {
-      margin: calc(var(--navbar-height) + 8px) 8px 10px 8px;
-      padding: 6px;
-      gap: 6px;
-      max-width: calc(100% - 16px);
-      border-radius: 7px;
-    }
-    .input-section label { font-size:11px; }
-    .input-section .input-box { font-size:12px; padding:6px 8px; width: 100%; height: 32px; }
-
-    .bunkers-grid { grid-template-columns: repeat(2, 1fr); gap:12px; padding:10px; }
-    .bunker { height: clamp(160px, calc(var(--available-height) * 0.7), 260px); }
-    .bunker svg { max-width:150px; max-height:220px; }
-    .bunker .label { font-size:12px; padding:5px 8px; min-width:100px; }
-
-    .mills-grid { grid-template-columns: 120px repeat(6, minmax(60px, 1fr)); gap:8px; padding: calc(var(--navbar-height) + 8px) 8px 12px 8px; }
-    .flow-input, .timer-input, .total-input { max-width: 100%; height: 32px; font-size: 12px; }
-    .popup-content { width: 320px; padding:14px; }
-    .add-coal-overlay { width: 36px; height: 36px; font-size: 18px; }
-  }
-
-  @media (max-width:360px) {
-    .input-section { margin: calc(var(--navbar-height) + 6px) 8px 8px 8px; padding:6px; max-width: calc(100% - 16px); }
-    .input-section label { font-size:10px; }
-    .input-section .input-box { font-size:11px; padding:5px 6px; height: 32px; }
-    .bunker { height: clamp(140px, calc(var(--available-height) * 0.65), 190px); }
-    .bunker svg { max-width:100px; max-height:150px; }
-    .bunker .label { font-size:11px; padding:4px 6px; min-width:90px; }
-    .flow-input, .timer-input, .total-input { max-width: 80px; font-size:11px; padding:5px; }
-    #saveBtn { padding:10px 12px; font-size:14px; }
-  }
-
-  /* Accessibility / minor fixes */
-  .mills-grid > .mill.coal-flow,
-  .mills-grid > .mill.next-timer,
-  .mills-grid > .mill.bunker-total { align-items: center; }
-
-
-  /* =========================
-     Overlay / small fixes (kept separate for clarity)
-     ========================= */
-
-  /* Ensure diagram container doesn't clip overlay buttons */
-  .diagram-in-grid .layout {
-    overflow: visible !important;
-  }
-
-  /* top overlay covers the whole layout and sits above content */
-  .diagram-in-grid .top-overlay {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    z-index: 1200;
-  }
-
-  .diagram-in-grid .top-overlay .add-coal-overlay {
-    pointer-events: auto;
-  }
-
-  /* overlay button visuals (vertical offset controlled by CSS var) */
-  .add-coal-overlay {
-    position: absolute;
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    border: none;
-    background: #0ea5a4;
-    color: #fff;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 22px;
-    cursor: pointer;
-    box-shadow: 0 6px 18px rgba(2,6,23,0.14);
-    z-index: 1300;
-    transform: translate(-50%, var(--add-coal-translate-y));
-    transition: transform .08s linear, top .08s linear, left .08s linear;
-  }
-  .add-coal-overlay:active { transform: translate(-50%, var(--add-coal-translate-y)) scale(.98); }
-
-  /* make mills-grid internally scrollable if you prefer (optional)
-     uncomment the next line if you want internal scrolling instead of page scroll:
-  .mills-grid { overflow: auto; -webkit-overflow-scrolling: touch; }
-  */
-
-  /* keep header rows visible (sticky) if internal scrolling is enabled */
-  .mills-grid > .mill.coal-flow,
-  .mills-grid > .mill.next-timer,
-  .mills-grid > .next-blend-box,
-  .mills-grid > .mill.bunker-total {
-    position: sticky;
-    top: 0;
-    z-index: 6;
-    background: transparent;
-  }
-
-  /* responsive tweak for overlay size if needed */
-  @media (max-width:700px){ .add-coal-overlay{ width:40px; height:40px; font-size:20px;} }
-  @media (max-width:480px){ .add-coal-overlay{ width:36px; height:36px; font-size:18px;} }
+/* END cleaned stylesheet */
 
 </style>
 
@@ -700,6 +500,7 @@
 
     <!-- diagram area (this is visible) -->
     <div class="hidden-dom" aria-hidden="true"></div>
+    <!-- <div class="page-grid"> -->
     <div class="diagram-in-grid" style="padding:8px;">
       <div class="layout">
         <div class="top-overlay" aria-hidden="true">
@@ -826,7 +627,7 @@
 
   </div><!-- .mills-grid -->
 </div><!-- .main-container -->
-
+<!-- </div> -->
 <!-- Popup used to add a coal layer to a specific bunker -->
 <div id="coalPopup" class="popup hidden" aria-hidden="true">
   <div class="popup-content" role="dialog" aria-modal="true">
@@ -1993,34 +1794,35 @@ window.savePayload = savePayload;
 
 <script>
 (function(){
-  if(window.__bunkerOverlayFix_v3) return;
-  window.__bunkerOverlayFix_v3 = true;
+  if(window.__bunkerOverlayFix_v4) return;
+  window.__bunkerOverlayFix_v4 = true;
 
-  // ensure top-overlay exists
+  // ensure top-overlay exists and the layout is the positioning context
   function ensureTopOverlay(){
     const layout = document.querySelector('.diagram-in-grid .layout');
     if(!layout) return null;
-    // ensure layout will not clip overlays
-    layout.style.overflow = 'visible';
+    // set positioning context but do NOT change sizing/overflow
+    if(getComputedStyle(layout).position === 'static'){
+      layout.style.position = 'relative'; // only this inline change to provide a positioning context
+    }
     let overlay = layout.querySelector('.top-overlay');
     if(!overlay){
       overlay = document.createElement('div');
       overlay.className = 'top-overlay';
-      // insert as first child so it's positioned relative to layout
+      // insert as first child so it layers over layout content
       layout.insertBefore(overlay, layout.firstChild);
     }
     return { layout, overlay };
   }
 
-  // create one overlay button per arrow if missing
+  // create overlay buttons once per arrow (idempotent)
   function createOverlayButtons(){
     const res = ensureTopOverlay();
     if(!res) return;
     const { layout, overlay } = res;
     const arrows = Array.from(layout.querySelectorAll('.arrow'));
-    // remove any extra buttons whose index is out of range
-    const existing = Array.from(overlay.querySelectorAll('.add-coal-overlay'));
-    existing.forEach(btn=>{
+    // remove stale buttons (index out of range)
+    Array.from(overlay.querySelectorAll('.add-coal-overlay')).forEach(btn=>{
       const idx = Number(btn.dataset.bunker);
       if(Number.isNaN(idx) || idx < 0 || idx >= arrows.length) btn.remove();
     });
@@ -2032,6 +1834,7 @@ window.savePayload = savePayload;
         btn.className = 'add-coal-overlay';
         btn.dataset.bunker = String(index);
         btn.setAttribute('aria-label', `Add coal to bunker ${index+1}`);
+        btn.type = 'button';
         btn.innerText = '+';
         btn.addEventListener('click', function(ev){
           ev.stopPropagation();
@@ -2046,149 +1849,100 @@ window.savePayload = savePayload;
     });
   }
 
-  // helper to detect rect collisions
+  // simple rect intersection helper
   function rectsIntersect(a,b){
     return !(b.left >= a.right || b.right <= a.left || b.top >= a.bottom || b.bottom <= a.top);
   }
 
-  // position overlay buttons at arrow tips; nudge up to avoid overlapping colored rects
-// position overlay buttons at arrow tips; place them BELOW the tip (lower side)
-function positionOverlayButtons(){
-  const res = ensureTopOverlay();
-  if(!res) return;
-  const { layout, overlay } = res;
-  const layoutRect = layout.getBoundingClientRect();
-  const arrows = Array.from(layout.querySelectorAll('.arrow'));
-  const buttons = Array.from(overlay.querySelectorAll('.add-coal-overlay'));
-  const coloredRects = Array.from(document.querySelectorAll('.bunker svg rect')).filter(r => r.getBoundingClientRect().width > 0 && r.getBoundingClientRect().height > 0);
-  const rectBoxes = coloredRects.map(r => r.getBoundingClientRect());
-  const rootStyle = getComputedStyle(document.documentElement);
-  const arrowHeadSize = parseFloat(rootStyle.getPropertyValue('--arrow-head-size')) || 10;
+  // position overlay buttons relative to layout; never modifies layout size
+  function positionOverlayButtons(){
+    const res = ensureTopOverlay();
+    if(!res) return;
+    const { layout, overlay } = res;
+    const layoutRect = layout.getBoundingClientRect();
+    const arrows = Array.from(layout.querySelectorAll('.arrow'));
+    const coloredRects = Array.from(document.querySelectorAll('.bunker svg rect'))
+      .map(r => r.getBoundingClientRect());
 
-  arrows.forEach((arrow, idx) => {
-    const btn = overlay.querySelector(`.add-coal-overlay[data-bunker="${idx}"]`);
-    if(!btn) return;
-    const arrowRect = arrow.getBoundingClientRect();
+    const rootStyle = getComputedStyle(document.documentElement);
+    const arrowHeadSize = parseFloat(rootStyle.getPropertyValue('--arrow-head-size')) || 10;
 
-    // tip coordinates relative to layout
-    const tipY = (arrowRect.top - layoutRect.top) + arrowRect.height + arrowHeadSize;
-    const tipX = (arrowRect.left - layoutRect.left) + (arrowRect.width / 2);
+    arrows.forEach((arrow, idx) => {
+      const btn = overlay.querySelector(`.add-coal-overlay[data-bunker="${idx}"]`);
+      if(!btn) return;
+      const arrowRect = arrow.getBoundingClientRect();
 
-    // compute button dimensions (fallbacks if not yet measured)
-    const btnHeight = (btn.offsetHeight && btn.offsetHeight > 0) ? btn.offsetHeight : 44;
-    const btnWidth  = (btn.offsetWidth  && btn.offsetWidth  > 0) ? btn.offsetWidth  : 44;
+      // tip coordinates relative to layout
+      const tipY = (arrowRect.top - layoutRect.top) + arrowRect.height + arrowHeadSize;
+      const tipX = (arrowRect.left - layoutRect.left) + (arrowRect.width / 2);
 
-    // keep horizontal centering via translateX; control vertical via top
-    btn.style.transform = 'translateX(-50%)';
+      // measure button or use sensible fallbacks
+      const measuredBtnHeight = (btn.offsetHeight && btn.offsetHeight > 0) ? btn.offsetHeight : 36;
+      const measuredBtnWidth  = (btn.offsetWidth  && btn.offsetWidth  > 0) ? btn.offsetWidth  : 36;
 
-    // Place the button below the arrow tip. Increase this value to move button lower.
-    const baseBelowOffset = Math.round(btnHeight * 0.5) + 18; // try ~btnHeight*0.5 + 18px gap
-    let desiredTop = Math.round(tipY + baseBelowOffset);
+      // horizontal centering via left + translateX(-50%)
+      btn.style.left = `${Math.round(tipX)}px`;
+      btn.style.transform = 'translateX(-50%)';
 
-    // clamp inside layout area
-    const minTop = 8;
-    const maxTop = layoutRect.height - 8 - btnHeight;
-    if(desiredTop < minTop) desiredTop = minTop;
-    if(desiredTop > maxTop) desiredTop = maxTop;
+      // place the button a little below the tip
+      const baseBelowOffset = Math.round(measuredBtnHeight * 0.4) + 12;
+      let desiredTop = Math.round(tipY + baseBelowOffset);
 
-    // initial placement
-    btn.style.left = `${Math.round(tipX)}px`;
-    btn.style.top  = `${desiredTop}px`;
+      // clamp inside layout area (use overlay height)
+      const minTop = 6;
+      const maxTop = Math.max(overlay.clientHeight - 6 - measuredBtnHeight, minTop);
+      desiredTop = Math.max(minTop, Math.min(maxTop, desiredTop));
+      btn.style.top = `${desiredTop}px`;
 
-    // if the button overlaps any important colored rects, nudge it further down (to avoid overlap)
-    let attempts = 0;
-    const maxAttempts = 10;
-    const stepDown = 8; // push down by 8px each attempt
-    let overlapped = false;
-    do {
-      const btnBox = btn.getBoundingClientRect();
-      overlapped = rectBoxes.some(rBox => rectsIntersect(btnBox, rBox));
-      if(overlapped){
+      // avoid overlapping colored rects by nudging down (best-effort)
+      let attempts = 0;
+      const maxAttempts = 8;
+      const stepDown = 6;
+      while(attempts < maxAttempts){
+        const btnBox = btn.getBoundingClientRect();
+        const overlaps = coloredRects.some(rBox => rectsIntersect(btnBox, rBox));
+        if(!overlaps) break;
         desiredTop = Math.min(maxTop, desiredTop + stepDown);
         btn.style.top = `${desiredTop}px`;
+        attempts++;
       }
-      attempts++;
-    } while(overlapped && attempts < maxAttempts);
-
-    // final clamp/safety
-    const finalTop = Math.max(minTop, Math.min(maxTop, desiredTop));
-    btn.style.top = `${finalTop}px`;
-  });
-}
-
-
-  // compute sizes and ensure mills-grid fills available space but scrolls internally
-  function computeSizesAndApply(){
-    const navbar = document.querySelector('.navbar');
-    const inputSec = document.querySelector('.input-section');
-    const navH = navbar ? navbar.getBoundingClientRect().height : 0;
-    const inputH = inputSec ? inputSec.getBoundingClientRect().height : 0;
-    const reserved = 8;
-    const available = Math.max(220, Math.floor(window.innerHeight - navH - inputH - reserved));
-
-    // update CSS vars (px) so CSS clamp calculations become exact
-    document.documentElement.style.setProperty('--input-height', inputH + 'px');
-    document.documentElement.style.setProperty('--available-height', available + 'px');
-
-    // apply to main container and mills-grid
-    const mainContainer = document.querySelector('.main-container') || document.querySelector('.mills-grid')?.parentElement;
-    const mills = document.querySelector('.mills-grid');
-    if(mainContainer){
-      mainContainer.style.height = available + 'px';
-      mainContainer.style.overflow = 'hidden';
-      mainContainer.style.boxSizing = 'border-box';
-    }
-    if(mills){
-      mills.style.height = available + 'px';
-      mills.style.maxHeight = available + 'px';
-      mills.style.overflow = 'auto'; // allow internal scrolling
-      mills.style.boxSizing = 'border-box';
-      mills.style.paddingBottom = '8px';
-    }
-
-    // ensure diagram layout fits
-    const layout = document.querySelector('.diagram-in-grid .layout');
-    if(layout){
-      const target = Math.max(120, available - 40);
-      layout.style.height = target + 'px';
-      layout.style.maxHeight = target + 'px';
-      layout.style.boxSizing = 'border-box';
-      layout.style.overflow = 'visible'; // important: don't clip overlay
-    }
+    });
   }
 
-  function refreshAll(){
+  function refreshOverlays(){
     createOverlayButtons();
-    computeSizesAndApply();
-    setTimeout(positionOverlayButtons, 45);
+    // small timeout lets layout settle if called during transitions
+    setTimeout(positionOverlayButtons, 30);
   }
 
-  // wrap existing updateBunkerColors if present so overlays reposition after color updates
-  if(typeof window.updateBunkerColors === 'function' && !window.__wrappedUpdateBunkerColorsForTip_v3){
-    window.__wrappedUpdateBunkerColorsForTip_v3 = true;
+  // wrap existing updateBunkerColors (if present) so overlay refreshes after colors change
+  if(typeof window.updateBunkerColors === 'function' && !window.__wrappedUpdateBunkerColorsForTip_v4){
+    window.__wrappedUpdateBunkerColorsForTip_v4 = true;
     const orig = window.updateBunkerColors;
     window.updateBunkerColors = function(...args){
       try{ orig.apply(this,args); }catch(e){ console.error(e); }
-      setTimeout(refreshAll, 80);
+      setTimeout(refreshOverlays, 80);
     };
   }
 
+  // reposition on resize/orientation change, but do not change layout sizing
+  let _resizeT = null;
   window.addEventListener('resize', function(){
-    if(window.__bunkerOverlayFix_resize) clearTimeout(window.__bunkerOverlayFix_resize);
-    window.__bunkerOverlayFix_resize = setTimeout(refreshAll, 90);
+    if(_resizeT) clearTimeout(_resizeT);
+    _resizeT = setTimeout(refreshOverlays, 90);
   });
-  window.addEventListener('orientationchange', function(){ setTimeout(refreshAll, 150); });
+  window.addEventListener('orientationchange', function(){ setTimeout(refreshOverlays, 150); });
 
   document.addEventListener('DOMContentLoaded', function(){
-    refreshAll();
-    // run again after short delay to catch late layout shifts
-    setTimeout(refreshAll, 160);
+    refreshOverlays();
+    setTimeout(refreshOverlays, 160);
   });
 
-  // manual trigger for debugging/tweaks
-  window.__refreshBunkerOverlayAndFit = refreshAll;
+  // expose manual refresh for debugging
+  window.__refreshBunkerOverlay = refreshOverlays;
 })();
 </script>
+
 
   <!-- external JS (keep your original external input.js if it contains savePayload or DB fetches) -->
   <script src="/public/input.js"></script>
@@ -2523,423 +2277,6 @@ function attachToRects(){
 })();
 
 </script>
-
-<!-- <script>
-/* ---------- Patch: bunker totals + live "Next timer" countdowns (DELEGATING VERSION) ---------- */
-(function(){
-  if(window.__bunkerTotalsPatch_vsafe) return;
-  window.__bunkerTotalsPatch_vsafe = true;
-
-  const BUNKER_COUNT = 6;
-  const N = (typeof NUM_COAL_ROWS !== 'undefined') ? Number(NUM_COAL_ROWS) : (window.NUM_COAL_ROWS || 5);
-
-  const _origCalculateBlended = (typeof calculateBlended === 'function') ? calculateBlended : null;
-
-  function getBunkerPercentSum(bIndex){
-    let sum = 0;
-    for(let r=1; r<=N; r++){
-      sum += parseFloat(document.querySelector(`.percentage-input[data-row="${r}"][data-mill="${bIndex}"]`)?.value) || 0;
-    }
-    return Math.max(0, Math.min(100, sum));
-  }
-
-  function updateBunkerTotalsUI(){
-    for(let m=0;m<BUNKER_COUNT;m++){
-      const el = document.querySelector(`.total-input[data-mill="${m}"]`);
-      const sumPct = getBunkerPercentSum(m);
-      if(el){
-        el.value = `${sumPct.toFixed(2)}%`;
-        el.dataset.percent = String(sumPct);
-      }
-    }
-  }
-
-  function getBunkerCapacityForIndex(bIndex){
-    const el1 = document.querySelector(`.bunker-capacity[data-mill="${bIndex}"]`);
-    if(el1) return Number(el1.value || el1.dataset.value || el1.textContent) || 0;
-    const el2 = document.getElementById('bunkerCapacity' + bIndex);
-    if(el2) return Number(el2.value || el2.dataset.value || el2.textContent) || 0;
-    const el3 = document.getElementById('bunkerCapacity');
-    if(el3) return Number(el3.value || el3.dataset.value || el3.textContent) || 0;
-    if(typeof getSingleBunkerCapacity === 'function') return Number(getSingleBunkerCapacity() || 0);
-    return 0;
-  }
-
-  function computeTotalBunkerSeconds_fallback(bIndex){
-    // prefer computeLayerSeconds if available (keeps parity)
-    if(typeof computeLayerSeconds === 'function'){
-      try{
-        const arr = computeLayerSeconds(bIndex) || [];
-        if(Array.isArray(arr) && arr.length) return arr.reduce((a,b)=>a + (Number(b)||0), 0);
-      }catch(e){}
-    }
-    const sumPct = getBunkerPercentSum(bIndex);
-    const bunkerCapacity = getBunkerCapacityForIndex(bIndex);
-    const flow = parseFloat(document.querySelector(`.flow-input[data-mill="${bIndex}"]`)?.value) || 0;
-    if(flow <= 0 || bunkerCapacity <= 0 || sumPct <= 0) return 0;
-    const hours = (sumPct / 100.0) * bunkerCapacity / flow;
-    return hours * 3600;
-  }
-
-  function formatHMS_local(sec){
-    if(typeof formatHMS === 'function') return formatHMS(sec);
-    const s = Math.max(0, Math.floor(sec||0));
-    const hrs = Math.floor(s / 3600);
-    const mins = Math.floor((s % 3600) / 60);
-    const secs = s % 60;
-    return `${String(hrs).padStart(2,'0')}:${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
-  }
-
-  // New safe wrappedCalculateBlended: call original, update totals UI,
-  // and DELEGATE timer control to existing bunkerTimers/startOrUpdateBunkerTimer when present.
-  function wrappedCalculateBlended(){
-    // 1) run original blended calc if present (this may itself start canonical timers)
-    try{
-      if(typeof _origCalculateBlended === 'function'){
-        _origCalculateBlended();
-      }
-    } catch(err){
-      console.error('Error running original calculateBlended():', err);
-    }
-
-    // 2) update totals UI
-    try{
-      updateBunkerTotalsUI();
-    } catch(err){
-      console.error('Error updating bunker totals UI:', err);
-    }
-
-    // 3) Timer coordination:
-    // If the canonical timer API exists (startOrUpdateBunkerTimer / clearBunkerTimer),
-    // do nothing — canonical logic already manages intervals and visuals.
-    // If it doesn't exist, compute totals and set timer display once (NO intervals).
-    const hasCanonical = (typeof window.startOrUpdateBunkerTimer === 'function' && typeof window.clearBunkerTimer === 'function' && Array.isArray(window.bunkerTimers));
-    try{
-      if(!hasCanonical){
-        // fallback: set one-shot timer-input text (no intervals)
-        for(let m=0;m<BUNKER_COUNT;m++){
-          const secs = Math.max(0, Math.floor(computeTotalBunkerSeconds_fallback(m) || 0));
-          const el = document.querySelector(`.timer-input[data-mill="${m}"]`);
-          if(el){
-            if(secs > 0){
-              el.value = formatHMS_local(secs);
-              el.dataset.seconds = String(secs);
-            } else {
-              el.value = '--';
-              el.dataset.seconds = '0';
-            }
-          }
-        }
-      } else {
-        // canonical timers exist — nothing to do here. They already started/updated via original calculation.
-        // But to be safe, ensure visual sync: update timer-input for each bunker if bunkerTimers present.
-        for(let m=0;m<BUNKER_COUNT;m++){
-          try{
-            const t = (window.bunkerTimers && window.bunkerTimers[m]) ? window.bunkerTimers[m] : null;
-            const el = document.querySelector(`.timer-input[data-mill="${m}"]`);
-            if(el){
-              if(t && Number(t.layerRemaining) > 0){
-                el.value = formatHMS_local(Math.max(0, Math.floor(t.layerRemaining)));
-                el.dataset.seconds = String(Math.max(0, Math.floor(t.layerRemaining)));
-              } else {
-                // show nextBlend if present (some code shows nextBlend), or default to '--'
-                const next = document.getElementById(`nextBlend${m}`);
-                if(next && next.dataset && Number(next.dataset.seconds) > 0){
-                  el.value = formatHMS_local(Number(next.dataset.seconds));
-                  el.dataset.seconds = String(Math.max(0, Math.floor(Number(next.dataset.seconds))));
-                } else {
-                  el.value = '--';
-                  el.dataset.seconds = '0';
-                }
-              }
-            }
-          } catch(e){ /* ignore per-bunker errors */ }
-        }
-      }
-    }catch(e){
-      console.error('Error coordinating timers in wrappedCalculateBlended', e);
-    }
-  }
-
-  // install wrapper (idempotent)
-  window.calculateBlended = wrappedCalculateBlended;
-
-  // Run initial once if page already invoked original earlier
-  try{ wrappedCalculateBlended(); } catch(e){ /* ignore */ }
-
-  // Clean up on unload (nothing special to clear because we no longer create intervals here)
-  window.addEventListener('beforeunload', function(){
-    // no-op (canonical timers are responsible for their cleanup)
-  });
-})();
-</script>
-<script>
-/*
-  Timer-stability patch
-  - Prevents timers for bunker A restarting when bunker B is edited
-  - Adds a short "call-coalescing" guard so repeated calculateBlended() calls don't restart intervals
-  - Non-destructive: re-uses existing startOrUpdateBunkerTimer / clearBunkerTimer if present,
-    otherwise patches local implementations conservatively.
-*/
-
-(function(){
-  if(window.__bunkerTimerStabilityPatch) return;
-  window.__bunkerTimerStabilityPatch = true;
-
-  const BUNKER_COUNT = 6;
-  const ROWS = (typeof NUM_COAL_ROWS !== 'undefined') ? Number(NUM_COAL_ROWS) : (window.NUM_COAL_ROWS || 5);
-
-  // small helper tolerance
-  function arraysEqualRoundedTolerance(a,b,tolSeconds=1){
-    if(!a && !b) return true;
-    if(!a || !b) return false;
-    if(a.length !== b.length) return false;
-    for(let i=0;i<a.length;i++){
-      if(Math.abs((Number(a[i]||0) - Number(b[i]||0))) > tolSeconds) return false;
-    }
-    return true;
-  }
-
-  // Track the last mill index that triggered an input event (so we can avoid touching timers for others)
-  window.__lastChangedMill = undefined;
-  window.__lastChangedAt = 0;
-  function recordMillChange(millIndex){
-    window.__lastChangedMill = Number.isFinite(Number(millIndex)) ? Number(millIndex) : undefined;
-    window.__lastChangedAt = Date.now();
-    // clear after short time
-    setTimeout(()=>{ if(Date.now() - window.__lastChangedAt >= 1400) { window.__lastChangedMill = undefined; } }, 1500);
-  }
-
-  // Attach light-weight capturing listeners to set lastChangedMill whenever percentage/flow changes.
-  // This won't change your existing behavior, only records the origin of the change.
-  function attachOriginCapture() {
-    // percentage inputs
-    document.querySelectorAll('.percentage-input').forEach(el=>{
-      if(el.__originAttached) return;
-      el.__originAttached = true;
-      el.addEventListener('input', function(){ const idx = Number(this.dataset.mill); if(!Number.isNaN(idx)) recordMillChange(idx); }, {passive:true});
-    });
-    // flow inputs
-    document.querySelectorAll('.flow-input').forEach(el=>{
-      if(el.__originAttached) return;
-      el.__originAttached = true;
-      el.addEventListener('input', function(){ const idx = Number(this.dataset.mill); if(!Number.isNaN(idx)) recordMillChange(idx); }, {passive:true});
-    });
-  }
-  // run now and also on DOM changes
-  attachOriginCapture();
-  const mo = new MutationObserver(()=> { attachOriginCapture(); });
-  try { mo.observe(document.body, { childList:true, subtree:true }); } catch(e){ /* ignore */ }
-
-  // Wrap / patch startOrUpdateBunkerTimer to be idempotent & to avoid restarts when unchanged.
-  // If your page already defines startOrUpdateBunkerTimer, we wrap it; otherwise we provide a safe fallback wrapper.
-  const originalStartOrUpdate = window.startOrUpdateBunkerTimer;
-  const originalClear = window.clearBunkerTimer || window.clearBunkerTimer; // keep existing if any
-  const timerMeta = window.bunkerTimers || new Array(BUNKER_COUNT).fill(null);
-
-  // store last-call timestamps to coalesce repeated calls
-  const lastCallAt = new Array(BUNKER_COUNT).fill(0);
-
-  function safeStartOrUpdate(b, layerSeconds, flow, bunkerCapacity){
-    try {
-      b = Number(b);
-      if(isNaN(b) || b < 0 || b >= BUNKER_COUNT) return;
-      const now = Date.now();
-
-      // normalize incoming layerSeconds to rounded integer seconds array
-      const normalized = (Array.isArray(layerSeconds) ? layerSeconds : []).map(x => Math.max(0, Math.round(Number(x)||0)));
-
-      // if canonical implementation present, prefer delegating to it but with guards to avoid bounce
-      if(typeof originalStartOrUpdate === 'function'){
-        const existing = (window.bunkerTimers && window.bunkerTimers[b]) ? window.bunkerTimers[b] : null;
-        // If existing timer running and lastConfig looks same (within tolerance) -> do nothing
-        if(existing && existing.intervalId && existing.lastConfig && arraysEqualRoundedTolerance(existing.lastConfig.layersSeconds || [], normalized, 1) && Math.abs((existing.lastConfig.flow||0)-(flow||0)) < 1e-6 && Math.abs((existing.lastConfig.bunkerCapacity||0)-(bunkerCapacity||0)) < 1e-6){
-          // update lastCallAt and exit (no restart)
-          lastCallAt[b] = now;
-          return;
-        }
-        // avoid restart storms: if we called recently and config unchanged, skip (coalescing)
-        if(existing && existing.intervalId && (now - (lastCallAt[b] || 0) < 1400) && arraysEqualRoundedTolerance(existing.lastConfig ? existing.lastConfig.layersSeconds||[] : [], normalized, 1) ){
-          lastCallAt[b] = now;
-          return;
-        }
-        // else delegate to original startOrUpdateBunkerTimer (it will handle normal start/clear)
-        try {
-          originalStartOrUpdate.call(window, b, normalized.slice(), Number(flow)||0, Number(bunkerCapacity)||0);
-        } catch(e){
-          // fallback to a safe local implementation below if original fails
-          console.warn('originalStartOrUpdate failed, falling back to local: ', e);
-          localStartOrUpdate(b, normalized, flow, bunkerCapacity);
-        }
-        lastCallAt[b] = now;
-        return;
-      } else {
-        // no canonical implementation: use local safe implementation
-        localStartOrUpdate(b, normalized, flow, bunkerCapacity);
-      }
-    } catch(err){
-      console.error('safeStartOrUpdate error', err);
-    }
-  }
-
-  // A small local fallback timer starter (only used if originalStartOrUpdate missing or failing)
-  function localStartOrUpdate(b, normalized, flow, bunkerCapacity){
-    const existing = timerMeta[b];
-    const now = Date.now();
-    // if existing running and config looks same -> keep it
-    if(existing && existing.intervalId && arraysEqualRoundedTolerance(existing.layersSeconds || [], normalized, 1) && Math.abs((existing.flow||0)-(flow||0)) < 1e-6 && Math.abs((existing.bunkerCapacity||0)-(bunkerCapacity||0)) < 1e-6){
-      lastCallAt[b] = now;
-      return;
-    }
-    // clear old
-    if(existing && existing.intervalId) { clearInterval(existing.intervalId); }
-    // find first positive layer
-    let startIndex = 0;
-    while(startIndex < normalized.length && (normalized[startIndex] || 0) <= 0) startIndex++;
-    if(startIndex >= normalized.length){
-      // nothing to start
-      timerMeta[b] = null;
-      // update UI timer inputs if present
-      const tEl = document.querySelector(`.timer-input[data-mill="${b}"]`);
-      if(tEl){ tEl.value = '--'; tEl.dataset.seconds = '0'; }
-      const nb = document.getElementById(`nextBlend${b}`); if(nb){ nb.value = '--'; nb.dataset.seconds = 0; }
-      return;
-    }
-    const obj = {
-      layersSeconds: normalized.slice(),
-      currentLayer: startIndex,
-      layerRemaining: Math.max(0, normalized[startIndex] || 0),
-      flow: Number(flow)||0,
-      bunkerCapacity: Number(bunkerCapacity)||0,
-      intervalId: null,
-      lastTouched: now
-    };
-    // immediate UI
-    const tEl = document.querySelector(`.timer-input[data-mill="${b}"]`);
-    if(tEl) { tEl.value = formatHMS(obj.layerRemaining); tEl.dataset.seconds = String(Math.max(0, Math.floor(obj.layerRemaining))); }
-    const nb = document.getElementById(`nextBlend${b}`); if(nb){ nb.value = formatHMS(obj.layerRemaining); nb.dataset.seconds = String(Math.max(0, Math.floor(obj.layerRemaining))); }
-    // start tick
-    obj.intervalId = setInterval(()=>{
-      try{
-        obj.lastTouched = Date.now();
-        if(obj.layerRemaining > 0) obj.layerRemaining--;
-        if(obj.layerRemaining <= 0){
-          obj.currentLayer++;
-          if(obj.currentLayer >= obj.layersSeconds.length){
-            clearInterval(obj.intervalId);
-            timerMeta[b] = null;
-            const te = document.querySelector(`.timer-input[data-mill="${b}"]`);
-            if(te){ te.value = '--'; te.dataset.seconds = '0'; }
-            const ne = document.getElementById(`nextBlend${b}`); if(ne){ ne.value = '--'; ne.dataset.seconds = '0'; }
-            return;
-          }
-          obj.layerRemaining = Math.max(0, obj.layersSeconds[obj.currentLayer] || 0);
-        }
-        const te = document.querySelector(`.timer-input[data-mill="${b}"]`);
-        if(te){ te.value = formatHMS(Math.max(0, Math.floor(obj.layerRemaining))); te.dataset.seconds = String(Math.max(0, Math.floor(obj.layerRemaining))); }
-        const ne = document.getElementById(`nextBlend${b}`); if(ne){ ne.value = formatHMS(Math.max(0, Math.floor(obj.layerRemaining))); ne.dataset.seconds = String(Math.max(0, Math.floor(obj.layerRemaining))); }
-      } catch(e){ console.error('local timer tick err', e); }
-    }, 1000);
-    timerMeta[b] = obj;
-    // expose in global if window.bunkerTimers was present earlier
-    if(Array.isArray(window.bunkerTimers)) window.bunkerTimers[b] = obj;
-  }
-
-  // Replace global startOrUpdateBunkerTimer with our safeStartOrUpdate wrapper so all callers benefit.
-  window.startOrUpdateBunkerTimer = safeStartOrUpdate;
-
-  // Ensure clearBunkerTimer delegates to original clear if present, else uses local
-  window.clearBunkerTimer = function(i){
-    try {
-      if(typeof originalClear === 'function') {
-        return originalClear(i);
-      }
-    } catch(e){ /* fallthrough */ }
-
-    // local fallback
-    const t = (window.bunkerTimers && window.bunkerTimers[i]) ? window.bunkerTimers[i] : (timerMeta[i] || null);
-    if(t && t.intervalId) clearInterval(t.intervalId);
-    if(window.bunkerTimers && Array.isArray(window.bunkerTimers)) window.bunkerTimers[i] = null;
-    if(timerMeta[i]) timerMeta[i] = null;
-    const tEl = document.querySelector(`.timer-input[data-mill="${i}"]`);
-    if(tEl){ tEl.value = '--'; tEl.dataset.seconds = '0'; }
-    const nb = document.getElementById(`nextBlend${i}`); if(nb){ nb.value = '--'; nb.dataset.seconds = 0; }
-  };
-
-  // Patch calculateBlended so that when it's invoked due to a local mill change it avoids touching other bunkers' timers.
-  const origCalc = (typeof window.calculateBlended === 'function') ? window.calculateBlended : null;
-  function patchedCalculateBlended(maybeMill){
-    // Determine the origin mill:
-    // 1) If caller passed a mill, use it.
-    // 2) Else if window.__lastChangedMill was set recently, use that.
-    // 3) Else undefined (global update)
-    let originMill = undefined;
-    if(typeof maybeMill !== 'undefined' && maybeMill !== null && !Number.isNaN(Number(maybeMill))) originMill = Number(maybeMill);
-    else if(typeof window.__lastChangedMill !== 'undefined' && (Date.now() - (window.__lastChangedAt || 0) < 1600)) originMill = window.__lastChangedMill;
-
-    // call original calculation but prevent it from automatically restarting timers for other bunkers.
-    // Many original implementations call startOrUpdateBunkerTimer themselves; since we've replaced that function with our safe wrapper,
-    // it will coalesce and avoid restarting running timers. To be extra safe, we run original in try/catch and then do a light-sync for timers.
-    try{
-      if(typeof origCalc === 'function'){
-        // If original accepted an argument, forward originMill to allow original to optimize (best-effort).
-        try {
-          origCalc(originMill);
-        } catch(e) {
-          // fallback: call with no args
-          origCalc();
-        }
-      }
-    } catch(e){
-      console.error('original calculateBlended threw', e);
-    }
-
-    // After original runs, perform final sanity: only touch timers for the originMill (if defined).
-    try{
-      for(let m=0;m<BUNKER_COUNT;m++){
-        // if originMill defined and different, skip touching timer state for this bunker unless timer config changed noticeably
-        if(typeof originMill !== 'undefined' && originMill !== null && m !== originMill){
-          // Check if existing canonical timer present; if so, don't clear/start it.
-          const t = (window.bunkerTimers && window.bunkerTimers[m]) ? window.bunkerTimers[m] : null;
-          if(t && t.intervalId){
-            // already running — do not disturb
-            continue;
-          }
-          // If not running, it's fine to start/clear based on computed layers (let original handle it)
-        } else {
-          // originMill is this mill or no origin: compute layers and ensure timer exists if needed.
-          // Use the canonical computeLayerSeconds if available
-          const layers = (typeof computeLayerSeconds === 'function') ? (computeLayerSeconds(m) || []) : [];
-          const flow = parseFloat(document.querySelector(`.flow-input[data-mill="${m}"]`)?.value) || 0;
-          const bunkerCapacity = (typeof getSingleBunkerCapacity === 'function') ? Number(getSingleBunkerCapacity() || 0) : Number(document.getElementById('bunkerCapacity')?.value || 0);
-          const need = Array.isArray(layers) && layers.some(s => Number(s) > 1);
-          if(need){
-            safeStartOrUpdate(m, layers, flow, bunkerCapacity);
-          } else {
-            // don't clear a running timer for other bunker changes, only clear if this mill is origin or no origin.
-            if(typeof originMill === 'undefined' || originMill === m) {
-              window.clearBunkerTimer && window.clearBunkerTimer(m);
-            }
-          }
-        }
-      }
-    } catch(err){
-      console.error('post-calc timer sync error', err);
-    }
-
-    // finally call updateBunkerColors to sync visuals
-    try { if(typeof window.updateBunkerColors === 'function') window.updateBunkerColors(); } catch(e){ /* ignore */ }
-  }
-
-  // install patched calculateBlended
-  window.calculateBlended = patchedCalculateBlended;
-
-  // initial run to ensure we are in a good state
-  try{ patchedCalculateBlended(); } catch(e){ /* ignore */ }
-
-  console.log('[bunkerTimerStabilityPatch] installed — timers should no longer restart when editing other bunkers');
-})();
-</script> -->
 
 
 <!-- Paste this block after your other scripts (once) -->
