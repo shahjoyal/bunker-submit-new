@@ -24,7 +24,7 @@
   --diagram-inner-max: 1600px;     /* how wide the white diagram card can be (increase to enlarge) */
 
   --bunker-top-line-distance: 30px;
-  --bunker-arrow-height: 120px;
+  --bunker-arrow-height: 90px;
   --line-left-offset: 4%;
   --line-right-offset: 8.2%;
   --arrow-width: 2px;
@@ -68,7 +68,17 @@ html, body {
 }
 .navbar img { max-height: calc(var(--navbar-height) - 10px); object-fit: contain; }
 .navbar h1 { margin: 0 12px; font-size: 20px; color: #000; font-weight:700; }
-
+  .nav-buttons { display:flex; gap:10px; align-items:center; margin-right:8px; }
+  .navbar button {
+    padding: 10px 15px;
+    background-color: var(--accent);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    border-radius: 6px;
+    font-weight: 700;
+  }
+  .navbar button:hover { background-color: #001cbb; }
 /* ================ INPUT SECTION ================ */
 .input-section {
   position: relative;
@@ -120,6 +130,9 @@ html, body {
   max-height: calc(100vh - var(--navbar-height) - var(--input-height));
   overflow: auto;
   -webkit-overflow-scrolling: touch;
+}
+.navbar .logout-btn {
+background: red;
 }
 
 /* thin, unobtrusive scrollbar (optional) */
@@ -292,6 +305,26 @@ html, body {
   cursor: pointer;
   z-index: 1300;
 }
+
+  /* popup */
+  .popup { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.35); z-index:1500; }
+  .popup.hidden { display:none; }
+  .popup-content {
+    background:#fff;
+    padding:18px;
+    border-radius:12px;
+    width:420px;
+    box-shadow:0 10px 40px rgba(2,6,23,0.18);
+  }
+  .popup-content h3 { margin:0 0 10px 0; font-size:18px; }
+  .popup-row { display:flex; gap:12px; margin:10px 0; align-items:center; }
+  .popup-row label { min-width:90px; font-size:14px; color:#444; }
+  .popup-row select, .popup-row input { flex:1; padding:10px; border-radius:8px; border:1px solid #e6e6e6; font-size:15px; }
+  .popup-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:14px; }
+  .btn { padding:10px 14px; border-radius:8px; border:none; cursor:pointer; font-size:14px; }
+  .btn-save { background:#0ea5a4; color:#fff; }
+  .btn-cancel { background:#f3f4f6; }
+  .btn-clear { background:#ef4444; color:#fff; }
 
 /* top line & arrows */
 .top-line {
@@ -2076,7 +2109,7 @@ window.savePayload = savePayload;
       <div style="display:flex;justify-content:space-between"><span style="color:#666">GCV</span><span style="font-weight:600">${(gcv===''||gcv===null)? '--' : Number(gcv).toFixed? Number(gcv).toFixed(2) : gcv}</span></div>
       <div style="display:flex;justify-content:space-between"><span style="color:#666">Cost/MT</span><span style="font-weight:600">${(cost===''||cost===null)? '--' : Number(cost).toFixed? Number(cost).toFixed(2) : cost}</span></div>
       <div style="height:6px"></div>
-      <div style="display:flex;justify-content:space-between"><span style="color:#666">AFT (bunker)</span><span style="font-weight:600">${aft || '--'}</span></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:#666">AFT</span><span style="font-weight:600">${aft || '--'}</span></div>
     `;
   }
 
