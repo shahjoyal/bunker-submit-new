@@ -534,6 +534,7 @@ background: red;
     <!-- diagram area (this is visible) -->
     <div class="hidden-dom" aria-hidden="true"></div>
     <!-- <div class="page-grid"> -->
+    
     <div class="diagram-in-grid" style="padding:8px;">
       <div class="layout">
         <div class="top-overlay" aria-hidden="true">
@@ -2315,12 +2316,9 @@ function attachToRects(){
 <!-- Paste this block after your other scripts (once) -->
 
 <script>
-/* Live per-bunker countdown manager
-   Requirements:
-   - Timer display inputs: #nextTimer0 ... #nextTimer5 (readonly, placeholder="hh:mm:ss")
-   - Percentage inputs: elements with class "percentage-input" and attribute data-mill="<bunkerIndex>"
-   - Flow inputs: elements with class "flow-input" and attribute data-mill="<bunkerIndex>"
-   - Single bunker capacity input: element with id "bunkerCapacity"
+/* Live per-bunker countdown manager + higher-frequency, real-time percent decay
+   - updates every 200ms using actual elapsed time for smooth, realtime feel
+   - keeps original inputs and wiring (percentage-input, flow-input, bunkerCapacity)
 */
 (function(){
   'use strict';
@@ -2328,6 +2326,8 @@ function attachToRects(){
   window.__liveBunkerTimers = true;
 
   const BUNKER_COUNT = 6;
+  // update interval in milliseconds (lower = smoother, higher CPU). 200ms is a good balance.
+  const TICK_MS = 200;
 
   // small helpers
   function pad2(n){ return String(n).padStart(2,'0'); }
@@ -2374,43 +2374,121 @@ function attachToRects(){
     return el ? parseNumber(el.value) : 0;
   }
 
+  // formatting percent for writing back to inputs (2 decimals max, trim trailing .00)
+  function formatPercentValue(v){
+    if(!isFinite(v) || Math.abs(v) < 1e-9) return '0';
+    const s = v.toFixed(2);
+    return String(Number(s));
+  }
+
   // state per bunker
-  const timers = new Array(BUNKER_COUNT).fill(null).map(()=>({
+  const timers = new Array(BUNKER_COUNT).fill(null).map(() => ({
     intervalId: null,
-    remaining: 0,
-    lastKnownTotalSeconds: 0 // the computed "full seconds" used to start the timer
+    remaining: 0,                // seconds (can be fractional)
+    lastKnownTotalSeconds: 0,    // original computed full seconds
+    startTotalPct: 0,            // percent at timer start
+    lastTickMs: 0                // performance.now() of last tick
   }));
 
   function _updateTimerUI(bIndex){
     const el = document.getElementById('nextTimer' + bIndex);
     if(!el) return;
     const rem = timers[bIndex].remaining || 0;
-    if(rem > 0){
+    if(rem > 0.0001){
       el.value = formatHMS(rem);
       el.dataset.seconds = String(Math.max(0, Math.floor(rem)));
     } else {
-      // show placeholder by clearing value
       el.value = '';
       el.dataset.seconds = '0';
     }
   }
 
-  function clearBunkerTimer(bIndex){
+  // set all percentage inputs for bunker to exactly zero (used when timer expires)
+  function setPercentagesToZero(bIndex){
+    const nodes = document.querySelectorAll(`.percentage-input[data-mill="${bIndex}"]`);
+    nodes.forEach(n => {
+      const orig = String(n.value || '').trim();
+      const hadPct = orig.endsWith('%');
+      n.value = hadPct ? '0%' : '0';
+    });
+  }
+
+  // proportionally reduce percentage inputs by loss amount (loss is in percent units, can be fractional)
+  function decrementPercentagesBy(bIndex, lossAmount){
+    if(!(lossAmount > 0)) return;
+    const nodes = Array.from(document.querySelectorAll(`.percentage-input[data-mill="${bIndex}"]`));
+    if(nodes.length === 0) return;
+
+    // current values
+    const items = nodes.map(n => {
+      const raw = String(n.value || '').trim();
+      return { node: n, value: parsePercent(raw), hadPct: raw.endsWith('%') };
+    });
+
+    let currentTotal = items.reduce((s,it) => s + it.value, 0);
+    if(currentTotal <= 0) return;
+
+    // if loss >= currentTotal, zero out
+    if(lossAmount >= currentTotal - 1e-9){
+      nodes.forEach(n => {
+        const hadPct = String(n.value || '').trim().endsWith('%');
+        n.value = hadPct ? '0%' : '0';
+      });
+      return;
+    }
+
+    // compute new values proportionally; adjust last element for rounding drift
+    const newVals = [];
+    let acc = 0;
+    for(let i=0;i<items.length;i++){
+      const it = items[i];
+      const proportion = (currentTotal > 0) ? (it.value / currentTotal) : 0;
+      const delta = lossAmount * proportion;
+      const newV = Math.max(0, it.value - delta);
+      newVals.push({ node: it.node, value: newV, hadPct: it.hadPct });
+      acc += newV;
+    }
+
+    const targetTotal = currentTotal - lossAmount;
+    const diff = targetTotal - acc;
+    if(Math.abs(diff) > 1e-6){
+      // adjust the largest remaining value
+      let idx = -1, maxVal = -1;
+      for(let i=0;i<newVals.length;i++){
+        if(newVals[i].value > maxVal){ maxVal = newVals[i].value; idx = i; }
+      }
+      if(idx >= 0){
+        newVals[idx].value = Math.max(0, newVals[idx].value + diff);
+      }
+    }
+
+    // write back
+    newVals.forEach(it => {
+      const str = formatPercentValue(it.value);
+      it.node.value = it.hadPct ? (str + '%') : str;
+    });
+  }
+
+  function clearBunkerTimer(bIndex, dueToExpiry){
     const t = timers[bIndex];
     if(!t) return;
     if(t.intervalId){ clearInterval(t.intervalId); t.intervalId = null; }
     t.remaining = 0;
     t.lastKnownTotalSeconds = 0;
+    t.startTotalPct = 0;
+    t.lastTickMs = 0;
     _updateTimerUI(bIndex);
+
+    if(dueToExpiry){
+      setPercentagesToZero(bIndex);
+    }
   }
 
   // start or restart a bunker timer with the provided fullSeconds
-  // policy: if a timer is running and lastKnownTotalSeconds is within 1s -> do nothing (avoid resets)
-  // if different (>1s) or no timer -> start fresh
-  function setBunkerTimer(bIndex, fullSeconds){
+  function setBunkerTimer(bIndex, fullSeconds, startTotalPct){
     bIndex = Number(bIndex);
     if(isNaN(bIndex) || bIndex < 0 || bIndex >= timers.length) return;
-    const secs = Math.max(0, Math.floor(Number(fullSeconds) || 0));
+    const secs = Math.max(0, Number(fullSeconds) || 0);
     const t = timers[bIndex];
 
     if(secs <= 0){
@@ -2418,26 +2496,41 @@ function attachToRects(){
       return;
     }
 
+    // If practically same, just update pct and keep running
     if(t.intervalId && Math.abs((t.lastKnownTotalSeconds||0) - secs) <= 1){
-      // active and practically same total — do not reset
+      t.startTotalPct = Number(startTotalPct) || t.startTotalPct || 0;
       return;
     }
 
-    // if running and significantly different, clear first
     if(t.intervalId) clearBunkerTimer(bIndex);
 
-    // start fresh countdown
+    // initialize state (allow fractional remaining seconds)
     t.remaining = secs;
     t.lastKnownTotalSeconds = secs;
+    t.startTotalPct = Number(startTotalPct) || 0;
+    t.lastTickMs = performance.now();
     _updateTimerUI(bIndex);
-    t.intervalId = setInterval(()=>{
-      t.remaining = Math.max(0, t.remaining - 1);
-      if(t.remaining <= 0){
-        clearBunkerTimer(bIndex);
+
+    // run high-frequency ticking using actual elapsed time
+    t.intervalId = setInterval(() => {
+      const now = performance.now();
+      const dt = Math.max(0, (now - (t.lastTickMs || now)) / 1000); // seconds (fractional)
+      t.lastTickMs = now;
+
+      // compute per-second loss based on the original startTotalPct and original seconds
+      const lossPerSec = (t.lastKnownTotalSeconds > 0 && t.startTotalPct > 0) ? (t.startTotalPct / t.lastKnownTotalSeconds) : 0;
+      const lossThisTick = lossPerSec * dt;
+      if(lossThisTick > 0){
+        decrementPercentagesBy(bIndex, lossThisTick);
+      }
+
+      t.remaining = Math.max(0, t.remaining - dt);
+      if(t.remaining <= 1e-6){
+        clearBunkerTimer(bIndex, true);
       } else {
         _updateTimerUI(bIndex);
       }
-    }, 1000);
+    }, TICK_MS);
   }
 
   // compute seconds from the formula and call setBunkerTimer/clear
@@ -2456,7 +2549,7 @@ function attachToRects(){
     const hours = (totalPct / 100) * bunkerCap / flow;
     const seconds = Math.max(0, Math.floor(hours * 3600));
 
-    setBunkerTimer(bIndex, seconds);
+    setBunkerTimer(bIndex, seconds, totalPct);
     return seconds;
   }
 
@@ -2513,7 +2606,6 @@ function attachToRects(){
     // ensure timer UI elements exist; create no-op placeholders if missing
     for(let i=0;i<BUNKER_COUNT;i++){
       if(!document.getElementById('nextTimer'+i)){
-        // optional: create hidden input so _updateTimerUI won't fail
         const fallback = document.createElement('input');
         fallback.type = 'text';
         fallback.id = 'nextTimer' + i;
@@ -2522,7 +2614,6 @@ function attachToRects(){
         document.body.appendChild(fallback);
       }
     }
-    // initial compute
     computeAllAndStart();
   }
 
@@ -2545,6 +2636,8 @@ function attachToRects(){
 
 })();
 </script>
+
+
 <script>
 /* Robust live bunker timer + percent drain (fixed selector & resilience)
    - Place this near end of body (after DOM & your markup).
