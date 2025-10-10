@@ -83,6 +83,11 @@ const BlendSchema = new mongoose.Schema({
     }]
   }],
 
+  // add to BlendSchema definition (after generation:)
+bunkerCapacity: { type: Number, default: 0 },          // global capacity (single input)
+bunkerCapacities: { type: [Number], default: [] },     // per-bunker override array (length 6 expected)
+
+
   // computed fields
   totalFlow: { type: Number, default: 0 },
   avgGCV: { type: Number, default: 0 },
@@ -243,7 +248,7 @@ async function computeBlendMetrics(rows, flows, generation) {
   const blendedGCVPerMill = [];
   const aftPerMill = [];
 
-  for (let m = 0; m < 6; m++) {
+  for (let m = 0; m < 8; m++) {
     let blendedGCV = 0;
     const ox = {};
     oxKeys.forEach(k => ox[k] = 0);
@@ -287,7 +292,7 @@ async function computeBlendMetrics(rows, flows, generation) {
   let weightedAFT = 0;
   let contributedAFTFlow = 0;
 
-  for (let m = 0; m < 6; m++) {
+  for (let m = 0; m < 8; m++) {
     const flow = (Array.isArray(flows) && flows[m]) ? Number(flows[m]) : 0;
     totalFlow += flow;
     weightedGCV += flow * (blendedGCVPerMill[m] || 0);
@@ -324,7 +329,7 @@ async function computeBlendMetrics(rows, flows, generation) {
 
   // Build per-bunker structure (independent storage)
   const bunkers = [];
-  for (let m = 0; m < 6; m++) {
+  for (let m = 0; m < 8; m++) {
     const layers = [];
     for (let rIdx = 0; rIdx < (rows || []).length; rIdx++) {
       const row = rows[rIdx];
@@ -362,7 +367,8 @@ async function computeBlendMetrics(rows, flows, generation) {
  */
 app.post('/api/blend', async (req, res) => {
   try {
-    const { rows, flows, generation } = req.body;
+    const { rows, flows, generation, bunkerCapacity, bunkerCapacities } = req.body;
+
     if (!Array.isArray(rows) || !Array.isArray(flows)) {
       return res.status(400).json({ error: 'Invalid payload: rows[] and flows[] required' });
     }
@@ -410,12 +416,15 @@ app.post('/api/blend', async (req, res) => {
     const metrics = await computeBlendMetrics(rowsToSave, flows, generation);
 
     // create and save blend - include bunkers from metrics
-    const doc = new Blend(Object.assign({}, {
-      rows: rowsToSave,
-      flows,
-      generation,
-      bunkers: metrics.bunkers || []
-    }, metrics));
+const doc = new Blend(Object.assign({}, {
+  rows: rowsToSave,
+  flows,
+  generation,
+  bunkerCapacity: Number(bunkerCapacity) || 0,
+  bunkerCapacities: Array.isArray(bunkerCapacities) ? bunkerCapacities.map(v => Number(v||0)) : [],
+  bunkers: metrics.bunkers || []
+}, metrics));
+
     await doc.save();
     return res.status(201).json({ message: 'Saved', id: doc._id });
   } catch (err) {
@@ -429,8 +438,8 @@ app.post('/api/blend', async (req, res) => {
  */
 app.put('/api/blend/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const { rows, flows, generation } = req.body;
+const { id } = req.params;
+const { rows, flows, generation, bunkerCapacity, bunkerCapacities } = req.body;
     if (!Array.isArray(rows) || !Array.isArray(flows)) {
       return res.status(400).json({ error: 'Invalid payload: rows[] and flows[] required' });
     }
@@ -474,11 +483,18 @@ app.put('/api/blend/:id', async (req, res) => {
     const rowsToSave = (rows || []).map(row => resolveRowCoalField(row));
     const metrics = await computeBlendMetrics(rowsToSave, flows, generation);
 
-    const updated = await Blend.findByIdAndUpdate(
-      id,
-      Object.assign({}, { rows: rowsToSave, flows, generation, bunkers: metrics.bunkers || [] }, metrics),
-      { new: true }
-    );
+const updated = await Blend.findByIdAndUpdate(
+  id,
+  Object.assign({}, {
+    rows: rowsToSave,
+    flows,
+    generation,
+    bunkerCapacity: Number(bunkerCapacity) || 0,
+    bunkerCapacities: Array.isArray(bunkerCapacities) ? bunkerCapacities.map(v => Number(v||0)) : [],
+    bunkers: metrics.bunkers || []
+  }, metrics),
+  { new: true }
+);
 
     if (!updated) return res.status(404).json({ error: 'Blend not found' });
 
