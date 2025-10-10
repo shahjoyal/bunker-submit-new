@@ -750,8 +750,169 @@ html, body { overflow: hidden; }
   <!-- ---------- Calculation script (keeps all existing logic) ---------- -->
 <script>
 window.NUM_COAL_ROWS = window.NUM_COAL_ROWS || 5;
- // ← change this to 4/6/... as needed
-const DEFAULT_COAL_COLORS = ["#f39c12","#3498db","#2ecc71","#ef4444","#8b5cf6","#14b8a6","#f97316","#06b6d4"];
+/* ---------- coal color persistence with unique assignments ---------- */
+/* ---------- palette (40 colors) and simplified mapping logic ---------- */
+const DEFAULT_COAL_COLORS = [
+  "#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f",
+  "#bcbd22","#17becf","#393b79","#5254a3","#6b6ecf","#9c9ede","#637939","#8ca252",
+  "#b5cf6b","#cedb9c","#8c6d31","#bd9e39","#e7ba52","#e377c2","#7b4173","#a55194",
+  "#ce6dbd","#de9ed6","#1b9e77","#d95f02","#7570b3","#e7298a","#66a61e","#e6ab02",
+  "#a6761d","#666666","#a6cee3","#1f78b4","#b2df8a","#33a02c","#fb9a99","#fdbf6f"
+];
+const COAL_COLOR_MAP_KEY = '__coalColorMap_v2'; // bump key to avoid old maps during testing
+
+function readCoalColorMap(){
+  try{
+    const raw = localStorage.getItem(COAL_COLOR_MAP_KEY);
+    return raw ? JSON.parse(raw) : {};
+  }catch(e){
+    console.warn('coal color map read err', e);
+    return {};
+  }
+}
+function writeCoalColorMap(map){
+  try{ localStorage.setItem(COAL_COLOR_MAP_KEY, JSON.stringify(map)); }catch(e){ console.warn('coal color map write err', e); }
+}
+function normalizeHex(h){
+  if(!h) return null;
+  h = String(h).trim();
+  if(!h) return null;
+  if(!h.startsWith('#')) h = '#' + h;
+  if(/^#([0-9a-f]{3})$/i.test(h)){
+    const m = h.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/i);
+    h = '#' + m[1]+m[1] + m[2]+m[2] + m[3]+m[3];
+  }
+  return h.toLowerCase();
+}
+function getReverseMap(map){
+  const rev = {};
+  for(const k of Object.keys(map)){
+    const c = normalizeHex(map[k]);
+    if(c) rev[c] = k;
+  }
+  return rev;
+}
+
+/* Pick first palette color not already used in the persistent map */
+function pickFirstUnusedPaletteColor(map){
+  const used = new Set(Object.keys(getReverseMap(map)));
+  for(const c of DEFAULT_COAL_COLORS){
+    const nc = normalizeHex(c);
+    if(!nc) continue;
+    if(!used.has(nc)) return nc;
+  }
+  return null;
+}
+
+/* generate unique random hex if palette is exhausted */
+function generateUniqueHex(map, tries = 80){
+  const used = new Set(Object.keys(getReverseMap(map)));
+  for(let i=0;i<tries;i++){
+    const r = Math.floor(Math.random()*256);
+    const g = Math.floor(Math.random()*256);
+    const b = Math.floor(Math.random()*256);
+    const hex = '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('').toLowerCase();
+    if(!used.has(hex)) return hex;
+  }
+  return null;
+}
+
+/* --- New behavior ---
+   getDisplayColor(key):
+     - If key already saved in localStorage map -> return saved color (persistent)
+     - Else -> return a non-persistent color chosen from palette (keeps UI colored immediately)
+     NOTE: does NOT write to localStorage.
+*/
+function getDisplayColor(key){
+  const rawKey = String(key || '').trim();
+  if(!rawKey) return normalizeHex(DEFAULT_COAL_COLORS[0]);
+
+  const map = readCoalColorMap();
+  if(map[rawKey]) return normalizeHex(map[rawKey]);
+
+  // for display-only, prefer a palette color that is not already persistently used
+  const pal = pickFirstUnusedPaletteColor(map);
+  if(pal) return pal;
+
+  // palette exhausted: pick deterministic fallback based on hash + index so different keys differ
+  let idx = 0;
+  for(let i=0;i<rawKey.length;i++){ idx = (idx * 31 + rawKey.charCodeAt(i)) >>> 0; }
+  return normalizeHex(DEFAULT_COAL_COLORS[idx % DEFAULT_COAL_COLORS.length]);
+}
+
+/* setCoalColor(key):
+   - persistently assign a unique palette color to key and write to localStorage.
+   - if requested color is supplied (optional second argument), tries to assign that (reassigning other key if needed).
+*/
+function setCoalColor(key, requestedHex){
+  const rawKey = String(key || '').trim();
+  if(!rawKey) return null;
+
+  const map = readCoalColorMap();
+  const rev = getReverseMap(map);
+
+  // if requested color provided, normalize and try to use it (reassign other if used)
+  if(requestedHex){
+    const desired = normalizeHex(requestedHex);
+    if(desired){
+      if(rev[desired] && rev[desired] !== rawKey){
+        // move the other key to another free palette color (or generated color)
+        const otherKey = rev[desired];
+        let replacement = pickFirstUnusedPaletteColor(map);
+        if(!replacement) replacement = generateUniqueHex(map);
+        if(!replacement) replacement = normalizeHex(DEFAULT_COAL_COLORS[(Math.abs(otherKey.length) % DEFAULT_COAL_COLORS.length)]);
+        map[otherKey] = replacement;
+      }
+      map[rawKey] = desired;
+      writeCoalColorMap(map);
+      return map[rawKey];
+    }
+  }
+
+  // if key already has a color, return it
+  if(map[rawKey]) return normalizeHex(map[rawKey]);
+
+  // pick first unused palette color
+  let pick = pickFirstUnusedPaletteColor(map);
+  if(!pick){
+    // palette exhausted -> generate unique hex
+    pick = generateUniqueHex(map);
+  }
+  if(!pick){
+    // last resort: deterministic fallback
+    pick = normalizeHex(DEFAULT_COAL_COLORS[(rawKey.length) % DEFAULT_COAL_COLORS.length]);
+  }
+
+  // ensure uniqueness: if pick somehow assigned, reassign previous owner
+  const revAfter = getReverseMap(map);
+  if(revAfter[pick] && revAfter[pick] !== rawKey){
+    const prev = revAfter[pick];
+    let replacement = pickFirstUnusedPaletteColor(map);
+    if(!replacement) replacement = generateUniqueHex(map);
+    map[prev] = replacement || normalizeHex(DEFAULT_COAL_COLORS[(prev.length)%DEFAULT_COAL_COLORS.length]);
+  }
+
+  map[rawKey] = pick;
+  writeCoalColorMap(map);
+  return map[rawKey];
+}
+
+/* remove persisted mapping (if you delete a coal) */
+function clearCoalColor(key){
+  const rawKey = String(key || '').trim();
+  if(!rawKey) return;
+  const map = readCoalColorMap();
+  if(map[rawKey]){ delete map[rawKey]; writeCoalColorMap(map); }
+}
+
+/* expose helpers */
+window.getDisplayColor = getDisplayColor;
+window.setCoalColor = setCoalColor;
+window.clearCoalColor = clearCoalColor;
+
+
+//over here
+
 
 function calcAFT(ox){
   const total = Object.values(ox).reduce((a,b)=>a+b,0);
@@ -809,23 +970,39 @@ function updateBunkerColors(){
 
   // pick colors per row (1..N)
   for(let r=1;r<=NUM_COAL_ROWS;r++){
-    const sel = document.getElementById(`coalName${r}`);
-    let color = DEFAULT_COAL_COLORS[(r-1) % DEFAULT_COAL_COLORS.length];
-    if(sel && sel.value){
-      const found = db.find(c => String(c._id) === String(sel.value) || String(c.coal||'').toLowerCase() === String(sel.value).toLowerCase());
-      if(found && (found.color || found.colour || found.hex)) color = found.color || found.colour || found.hex;
-    }
-    rowColors[r-1] = color;
-    if(sel){
-      sel.style.background = color;
-      try{
-        const c = color.replace('#','');
-        const rch = parseInt(c.substring(0,2),16), gch = parseInt(c.substring(2,4),16), bch = parseInt(c.substring(4,6),16);
-        const lum = 0.2126*rch + 0.7152*gch + 0.0722*bch;
-        sel.style.color = (lum < 140) ? '#fff' : '#111';
-      }catch(e){}
-    }
-  }
+    // choose color for row r using persisted map / DB / deterministic fallback
+// choose color for row r using a robust persistent key (id:... or name:...)
+let colorForRow = DEFAULT_COAL_COLORS[(r-1) % DEFAULT_COAL_COLORS.length];
+const sel = document.getElementById(`coalName${r}`);
+
+// build a robust key: prefer option value (id) else option text (name)
+let colorKey = null;
+if(sel){
+  const val = (sel.value !== undefined && String(sel.value).trim()) ? String(sel.value).trim() : '';
+  const label = (sel.selectedOptions && sel.selectedOptions[0] && sel.selectedOptions[0].text) ? String(sel.selectedOptions[0].text).trim() : '';
+  if(val) colorKey = `id:${val}`;
+  else if(label) colorKey = `name:${label}`;
+}
+
+if(colorKey){
+ colorForRow = getDisplayColor(colorKey);
+
+} else {
+  // fallback use row number so different rows still get different defaults
+  colorForRow = findCoalColor(`row:${r}`);
+}
+rowColors[r-1] = colorForRow;
+
+// update the select's background & contrast as before
+if(sel){
+  sel.style.background = colorForRow;
+  try{
+    const c = String(colorForRow).replace('#','');
+    const rch = parseInt(c.substring(0,2),16), gch = parseInt(c.substring(2,4),16), bch = parseInt(c.substring(4,6),16);
+    const lum = 0.2126*rch + 0.7152*gch + 0.0722*bch;
+    sel.style.color = (lum < 140) ? '#fff' : '#111';
+  }catch(e){}
+}
 
   // update each bunker svg by stacking rows bottom->top (row NUM as bottom)
   const svgWidth = 100, svgHeight = 150, topY = 10, midY = 100, bottomY = 140, usableH = bottomY - topY;
@@ -874,7 +1051,47 @@ function updateBunkerColors(){
       const pct = pctVals[layerIdx] || 0;
       cum += visibleH;
       const colorIndex = (NUM_COAL_ROWS - 1 - layerIdx);
-      const fillColor = rowColors[colorIndex] || DEFAULT_COAL_COLORS[colorIndex % DEFAULT_COAL_COLORS.length];
+// compute fillColor from per-bunker stored coal (preferred) or fallback to row select / preview
+let fillColor = null;
+try{
+  // rowIndex corresponds to the actual row number (1..NUM_COAL_ROWS)
+  const storedInput = document.getElementById(`coal_cell_r${rowIndex}_m${bIndex}`) || document.querySelector(`input[name="coal_cell_r${rowIndex}_m${bIndex}"]`) || document.querySelector(`input[id="coal_cell_r${rowIndex}_m${bIndex}"]`);
+  let storedCoalVal = storedInput && storedInput.value ? String(storedInput.value).trim() : '';
+
+  // If not found via element id/name, try reading hidden input via ensureHiddenInputLocal's id pattern
+  if(!storedCoalVal){
+    const alt = document.querySelector(`input[id^="coal_cell_r${rowIndex}_m"]`) || null;
+    if(alt && alt.value) storedCoalVal = String(alt.value).trim();
+  }
+
+  let colorKeyForLayer = null;
+  if(storedCoalVal){
+    colorKeyForLayer = `id:${storedCoalVal}`;
+  } else {
+    // fallback to the row select label/value (non-persisted)
+    const selRow = document.getElementById(`coalName${rowIndex}`);
+    if(selRow){
+      const v = (selRow.value !== undefined && String(selRow.value).trim()) ? String(selRow.value).trim() : '';
+      const lab = (selRow.selectedOptions && selRow.selectedOptions[0] && selRow.selectedOptions[0].text) ? String(selRow.selectedOptions[0].text).trim() : '';
+      colorKeyForLayer = v ? `id:${v}` : (lab ? `name:${lab}` : `row:${rowIndex}`);
+    } else {
+      colorKeyForLayer = `row:${rowIndex}`;
+    }
+  }
+
+  // prefer persisted color from map, else use display preview
+  const persistentMap = readCoalColorMap();
+  if(colorKeyForLayer && persistentMap[colorKeyForLayer]){
+    fillColor = normalizeHex(persistentMap[colorKeyForLayer]);
+  } else {
+    // getDisplayColor shows a good preview without persisting
+    fillColor = (typeof window.getDisplayColor === 'function') ? window.getDisplayColor(colorKeyForLayer) : (rowColors[colorIndex] || DEFAULT_COAL_COLORS[colorIndex % DEFAULT_COAL_COLORS.length]);
+  }
+} catch(err){
+  console.warn('fillColor compute error', err);
+  fillColor = rowColors[colorIndex] || DEFAULT_COAL_COLORS[colorIndex % DEFAULT_COAL_COLORS.length];
+}
+
       if(visibleH > 0){
         // add data attributes and inline handlers (call global window functions)
         inner += `<rect x="0" y="${y}" width="${svgWidth}" height="${visibleH}" fill="${fillColor}" clip-path="url(#${clipId})" data-row="${rowIndex}" data-mill="${bIndex}" data-pct="${pct}" onmouseenter="window.showCoalRectTooltip && window.showCoalRectTooltip(event, ${rowIndex}, ${bIndex})" onmousemove="window.moveCoalRectTooltip && window.moveCoalRectTooltip(event)" onmouseleave="window.hideCoalRectTooltip && window.hideCoalRectTooltip()" />`;
@@ -910,6 +1127,7 @@ function updateBunkerColors(){
       infoEl.innerText = layers.length? layers.join(' | ') : 'No layers';
     }
   });
+}
 }
 
 
@@ -1494,9 +1712,37 @@ function saveCoalSelection() {
     if (typeof validateMillPercentages === 'function') validateMillPercentages();
     if (typeof updateBunkerColors === 'function') updateBunkerColors();
 
-    const more = findLastFilledRowForBunker(bunkerIndex);
+       const more = findLastFilledRowForBunker(bunkerIndex);
     const clearBtn = document.getElementById('clearLastBtn');
     if (clearBtn) clearBtn.style.display = more ? 'inline-block' : 'none';
+
+       // --- persist color mapping for this coal selection (REPLACEMENT) ---
+    try{
+      // prefer popup selection values (coalId, coalObj) because the row-select may still be placeholder
+      const val = (coalId !== undefined && String(coalId).trim()) ? String(coalId).trim() : '';
+      const label = (coalObj && (coalObj.coal || coalObj.name)) ? String(coalObj.coal || coalObj.name).trim() : '';
+
+      const colorKey = val ? `id:${val}` : (label ? `name:${label}` : null);
+
+      // debug
+      console.info('[coal-color] SAVE attempt (popup):', { row, bunkerIndex, coalId: val, label, colorKey });
+
+      if(colorKey){
+        if(typeof window.setCoalColor === 'function'){
+          // persistently assign a unique color for this key
+          const assigned = window.setCoalColor(colorKey);
+          const map = JSON.parse(localStorage.getItem('__coalColorMap_v2') || '{}');
+          console.info('[coal-color] assigned:', colorKey, '->', assigned, 'currentMapSize:', Object.keys(map).length, map);
+        } else {
+          console.warn('[coal-color] setCoalColor not available; mapping not saved');
+        }
+      } else {
+        console.warn('[coal-color] could not construct colorKey from popup selection', { coalId, coalObj });
+      }
+    }catch(err){
+      console.warn('[coal-color] error while persisting color:', err);
+    }
+
 
     // ALWAYS close the popup after a successful save (fixes the UX bug)
     if (typeof closeCoalPopup === 'function') closeCoalPopup();
@@ -1505,6 +1751,7 @@ function saveCoalSelection() {
     alert('Error saving layer — see console.');
   }
 }
+
 
 /* Clear the last (most recently added) layer for a bunker using seq stamps */
 function clearLastLayer() {
@@ -1724,12 +1971,12 @@ setInterval(updateBunkerTooltips, 1500);
     }
   }
 
-  function clearTotalCountdown(bIndex){
-    const obj = totalCountdowns[bIndex];
-    if(obj && obj.intervalId){ clearInterval(obj.intervalId); obj.intervalId = null; }
-    obj.remaining = 0;
-    _updateTimerUI(bIndex);
-  }
+  // function clearTotalCountdown(bIndex){
+  //   const obj = totalCountdowns[bIndex];
+  //   if(obj && obj.intervalId){ clearInterval(obj.intervalId); obj.intervalId = null; }
+  //   obj.remaining = 0;
+  //   _updateTimerUI(bIndex);
+  // }
 
   function startOrResetTotalCountdown(bIndex, seconds){
     bIndex = Number(bIndex);
@@ -1762,42 +2009,42 @@ setInterval(updateBunkerTooltips, 1500);
 
   // Public helpers
   window.updateBunkerTotalsUI = updateBunkerTotalsUI;
-  window.clearTotalCountdown = clearTotalCountdown;
+  // window.clearTotalCountdown = clearTotalCountdown;
   window.startOrResetTotalCountdown = startOrResetTotalCountdown;
   window.computeTotalBunkerSeconds = computeTotalBunkerSeconds;
 
-  function wrappedCalculateBlended(){
-    try{
-      if(typeof _origCalculateBlended === 'function'){
-        _origCalculateBlended();
-      } else {
-        console.warn('Original calculateBlended not found — running fallback updates only.');
-      }
-    } catch(err){
-      console.error('Error running original calculateBlended():', err);
-    }
+  // function wrappedCalculateBlended(){
+  //   try{
+  //     if(typeof _origCalculateBlended === 'function'){
+  //       _origCalculateBlended();
+  //     } else {
+  //       console.warn('Original calculateBlended not found — running fallback updates only.');
+  //     }
+  //   } catch(err){
+  //     console.error('Error running original calculateBlended():', err);
+  //   }
 
-    try{
-      updateBunkerTotalsUI();
+  //   try{
+  //     updateBunkerTotalsUI();
 
-      for(let m=0;m<8;m++){
-        const secs = Math.max(0, Math.floor(computeTotalBunkerSeconds(m) || 0));
-        if(secs > 0){
-          startOrResetTotalCountdown(m, secs);
-        } else {
-          clearTotalCountdown(m);
-        }
-      }
-    } catch(err){
-      console.error('Error in bunker totals / countdown updates:', err);
-    }
-  }
+  //     for(let m=0;m<8;m++){
+  //       const secs = Math.max(0, Math.floor(computeTotalBunkerSeconds(m) || 0));
+  //       if(secs > 0){
+  //         startOrResetTotalCountdown(m, secs);
+  //       } else {
+  //         clearTotalCountdown(m);
+  //       }
+  //     }
+  //   } catch(err){
+  //     console.error('Error in bunker totals / countdown updates:', err);
+  //   }
+  // }
 
-  // install wrapper
-  window.calculateBlended = wrappedCalculateBlended;
+  // // install wrapper
+  // window.calculateBlended = wrappedCalculateBlended;
 
-  // run initial update now if the page already called calculateBlended earlier
-  try{ wrappedCalculateBlended(); } catch(e){}
+  // // run initial update now if the page already called calculateBlended earlier
+  // try{ wrappedCalculateBlended(); } catch(e){}
 
   window.addEventListener('beforeunload', function(){
     for(let i=0;i<totalCountdowns.length;i++) if(totalCountdowns[i].intervalId) clearInterval(totalCountdowns[i].intervalId);
