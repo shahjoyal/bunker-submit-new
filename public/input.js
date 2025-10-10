@@ -87,6 +87,7 @@ function findCoalInDB(idOrName){
      rows[].coal: if all mills for that row share same coal id -> store string
                    else store object { "0": "id0", "1": "id1", . } (mill index keys)
 */
+// REPLACE existing collectFormData() with this version
 function collectFormData(){
   var rows = [];
   var N = window.NUM_COAL_ROWS || 5;
@@ -95,7 +96,7 @@ function collectFormData(){
     // build per-mill mapping if any per-cell present
     var perCellMap = {};
     var anyPerCell = false;
-    for(var m=0;m<6;m++){
+    for(var m=0;m<8;m++){
       var cid = getCellCoalId(r,m) || '';
       if(cid && cid !== coalGlobal){
         anyPerCell = true;
@@ -105,7 +106,7 @@ function collectFormData(){
     var coalField = anyPerCell ? perCellMap : (coalGlobal || '');
     // collect percentages for this row (length 6)
     var percentages = [];
-    for(var mm=0; mm<6; mm++){
+    for(var mm=0; mm<8; mm++){
       var p = document.querySelector(`.percentage-input[data-row="${r}"][data-mill="${mm}"]`);
       percentages.push(p ? _parseFloatSafe(p.value) : 0);
     }
@@ -118,9 +119,36 @@ function collectFormData(){
   var flows = [];
   var flowEls = document.querySelectorAll('.flow-input');
   for(var i=0;i<flowEls.length;i++) flows.push(_parseFloatSafe(flowEls[i].value));
+
   var generation = _parseFloatSafe(_getElVal('generation'));
-  return { rows: rows, flows: flows, generation: generation, ts: Date.now() };
+
+  // NEW: global bunker capacity (single input #bunkerCapacity)
+  var bunkerCapacity = _parseFloatSafe(_getElVal('bunkerCapacity'));
+
+  // NEW: per-bunker capacities (if present in DOM: .bunker-capacity[data-mill="i"] or #bunkerCapacity{i})
+  var bunkerCapacities = [];
+  for(var bi=0; bi<8; bi++){
+    var capEl = document.querySelector(`.bunker-capacity[data-mill="${bi}"]`) || document.getElementById('bunkerCapacity' + bi);
+    if(capEl){
+      var v = (capEl.value !== undefined) ? capEl.value : (capEl.dataset && capEl.dataset.value ? capEl.dataset.value : capEl.textContent);
+      bunkerCapacities.push(_parseFloatSafe(v));
+    } else {
+      // fallback: push 0 so array has fixed size
+      bunkerCapacities.push(0);
+    }
+  }
+
+  return {
+    rows: rows,
+    flows: flows,
+    generation: generation,
+    ts: Date.now(),
+    // added fields:
+    bunkerCapacity: bunkerCapacity,
+    bunkerCapacities: bunkerCapacities
+  };
 }
+
 
 /* fetch latest blend id and save/put (same as before) */
 async function fetchLatestBlendId(){
