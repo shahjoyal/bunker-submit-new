@@ -4,8 +4,14 @@
   <meta charset="UTF-8" />
   <title>Coal Blending Ratio — modified</title>
 <style>
- /* ================ Cleaned & tuned stylesheet ================ */
-/* Core variables */
+/* ================ Final Integrated Stylesheet (fixed) ================
+   - Preserves inline SVG rect/circle/ellipse fills (so your JS colors show)
+   - Keeps bunker structural lines stroke-only
+   - Sidebar width reduced to 160px
+   - Arrows / top-line unchanged
+   ===================================================================== */
+
+/* -------------------- Core variables & base -------------------- */
 :root{
   --bg: #F7F8FA;
   --card: #fff;
@@ -13,24 +19,28 @@
   --accent: #02008a;
 
   --navbar-height: 65px;
-  --input-height: 72px; /* change if your input-section grows */
+  --input-height: 72px;
 
-  /* available vertical area for diagram/mills */
   --available-height: calc(100vh - var(--navbar-height) - var(--input-height) - 40px);
 
-  /* layout tuning knobs */
   --mills-gap: 12px;
-  --page-max: 1800px;         /* previously 1400px */
-  --diagram-inner-max: 1600px;     /* how wide the white diagram card can be (increase to enlarge) */
+  --page-max: 1800px;
+  --diagram-inner-max: 1600px;
+
+  --sidebar-width: 160px;
+  --sidebar-offset: 8px;
 
   --bunker-top-line-distance: 30px;
   --bunker-arrow-height: 90px;
   --line-left-offset: 4%;
-  --line-right-offset: 8.2%;
+  --line-right-offset: 6.2%;
   --arrow-width: 2px;
   --arrow-head-size: 10px;
 
   --add-coal-translate-y: -40%;
+
+  --bunker-outline-color: #000;
+  --bunker-outline-width: 3px;
 }
 
 /* Box sizing & base text */
@@ -43,15 +53,13 @@ html, body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-family: Inter, system-ui, Arial, Helvetica, sans-serif;
-
-  /* keep page fixed; .mills-grid will be scrollable */
   overflow: hidden;
 }
 
-/* Hide dev helpers if present */
+/* Hide dev helpers */
 #loader, #downloadPDF, .summary-table, #summaryHidden { display: none !important; }
 
-/* ================ NAVBAR ================ */
+/* -------------------- NAVBAR -------------------- */
 .navbar {
   width: 100%;
   background-color: #f7f8fa;
@@ -60,26 +68,18 @@ html, body {
   align-items: center;
   padding: 12px 20px;
   position: fixed;
-  top: 0;
-  left: 0;
+  top: 0; left: 0;
   height: var(--navbar-height);
   z-index: 1100;
   box-shadow: 0 4px 8px rgba(0,0,0,0.06);
 }
 .navbar img { max-height: calc(var(--navbar-height) - 10px); object-fit: contain; }
 .navbar h1 { margin: 0 12px; font-size: 20px; color: #000; font-weight:700; }
-  .nav-buttons { display:flex; gap:10px; align-items:center; margin-right:8px; }
-  .navbar button {
-    padding: 10px 15px;
-    background-color: var(--accent);
-    color: #fff;
-    border: none;
-    cursor: pointer;
-    border-radius: 6px;
-    font-weight: 700;
-  }
-  .navbar button:hover { background-color: #001cbb; }
-/* ================ INPUT SECTION ================ */
+.nav-buttons { display:flex; gap:10px; align-items:center; margin-right:8px; }
+.navbar button { padding:10px 15px; background:var(--accent); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:700; }
+.navbar button:hover { background:#001cbb; }
+
+/* -------------------- INPUT SECTION -------------------- */
 .input-section {
   position: relative;
   margin: calc(var(--navbar-height) + 8px) auto 8px;
@@ -98,48 +98,63 @@ html, body {
   min-height: var(--input-height);
 }
 .input-section label { font-size: 12px; font-weight:600; color:#fff; white-space:nowrap; margin:0; }
-.input-section .input-box {
-  padding:6px 8px; border-radius:6px; border:1px solid #d6d6d6; background:#fff;
-  width:112px; height:34px; font-size:13px; box-sizing:border-box;
-}
-
-/* Save button */
+.input-section .input-box { padding:6px 8px; border-radius:6px; border:1px solid #d6d6d6; background:#fff; width:112px; height:34px; font-size:13px; box-sizing:border-box; }
 #saveBtn { background: #ef4444; color: #fff; padding:8px 12px; border-radius:8px; border:none; cursor:pointer; }
 
-/* ================ MAIN / CENTERING ================ */
-/* center main content and cap width */
+/* -------------------- MAIN / CENTERING -------------------- */
 .main-container {
   max-width: var(--page-max);
   margin: 0 auto;
   padding: 0 12px;
   box-sizing: border-box;
-    width: 100%; /* add this */
+  width: 100%;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 12px;
+  overflow: visible;
 }
 
-/* mills-grid: left label column + 6 flexible columns (one per bunker) */
+/* -------------------- SIDEBAR (OVERLAY) -------------------- */
+.side-bar {
+  position: absolute;
+  top: calc(var(--navbar-height) + 12px);
+  left: max(8px, calc(50% - (var(--diagram-inner-max) / 2) - var(--sidebar-width) - var(--sidebar-offset)));
+  width: var(--sidebar-width);
+  min-width: 120px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  border-radius: 10px;
+  background: #02008a;
+  box-shadow: 0 8px 24px rgba(2,6,23,0.06);
+  z-index: 1250;
+  pointer-events: auto;
+}
+.side-bar .sidebar-title { font-size:12px; color:white; font-weight:800; text-transform:uppercase; letter-spacing:.6px; }
+.unit-btn { width: 100%; height: 44px; display: inline-flex; align-items:center; justify-content:center; padding: 8px 6px; border-radius: 10px; border: 1px solid rgba(2,8,23,0.06); background: #fff; font-weight: 800; font-size: 13px; cursor: pointer; box-shadow: 0 6px 14px rgba(2,6,23,0.04); }
+.unit-btn:hover { transform: translateY(-2px); transition: transform 160ms ease; background: #0ea5a4; }
+@media (max-width: 980px) { .side-bar { display: none; } }
+
+/* -------------------- MILLS GRID -------------------- */
 .mills-grid {
   display: grid;
-  grid-template-columns: 180px repeat(6, 1fr); /* wider left column helps center */
+  grid-template-columns: 150px repeat(8, 1fr);
   gap: var(--mills-gap);
   align-items: start;
   padding: 6px 12px 12px;
   width: 100%;
   box-sizing: border-box;
-
-  /* use remaining vertical area and allow internal scroll */
-  max-height: calc(100vh - var(--navbar-height) - var(--input-height));
+  max-height: calc(100vh - var(--navbar-height) - var(--input-height) - 24px);
   overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
-.navbar .logout-btn {
-background: red;
-}
-
-/* thin, unobtrusive scrollbar (optional) */
 .mills-grid::-webkit-scrollbar { width: 9px; height: 9px; }
 .mills-grid::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 8px; }
 
-/* left headers */
 .mills-grid > .mill.coal-flow,
 .mills-grid > .mill.next-timer,
 .mills-grid > .mill.bunker-total {
@@ -155,7 +170,7 @@ background: red;
   gap:6px;
 }
 
-/* hide developer-only fields */
+/* hide dev-only */
 .mills-grid .dropdown,
 .mills-grid .percentage-input,
 .mills-grid .gcv,
@@ -168,11 +183,9 @@ background: red;
 .mills-grid .mill.green,
 .mills-grid .mill[readonly] { display: none !important; }
 
-/* default hide then selectively show mills that contain inputs */
 .mills-grid > .mill { display: none !important; }
 .mills-grid > .mill.coal-flow { display:flex !important; padding-left:6px; }
 
-/* show columns that contain relevant inputs */
 .mills-grid > .mill:has(.flow-input),
 .mills-grid > .mill:has(.timer-input),
 .mills-grid > .mill:has(.total-input) {
@@ -182,15 +195,17 @@ background: red;
   padding:4px 6px !important;
 }
 
-/* place each data-mill into its column 2..7 */
 .mills-grid > .mill:has([data-mill="0"]) { grid-column: 2; }
 .mills-grid > .mill:has([data-mill="1"]) { grid-column: 3; }
 .mills-grid > .mill:has([data-mill="2"]) { grid-column: 4; }
 .mills-grid > .mill:has([data-mill="3"]) { grid-column: 5; }
 .mills-grid > .mill:has([data-mill="4"]) { grid-column: 6; }
 .mills-grid > .mill:has([data-mill="5"]) { grid-column: 7; }
+.mills-grid > .mill:has([data-mill="6"]) { grid-column: 8; }
+.mills-grid > .mill:has([data-mill="7"]) { grid-column: 9; }
 
-/* inputs: fill their cell (no fixed max width so they scale with column) */
+
+/* inputs */
 .flow-input,
 .timer-input,
 .next-blend-box,
@@ -208,67 +223,46 @@ background: red;
   box-sizing: border-box;
 }
 
-/* ================ DIAGRAM / BUNKERS ================ */
-/* diagram occupies the same 6 center columns and centers itself */
+/* -------------------- DIAGRAM / BUNKERS -------------------- */
 .diagram-in-grid {
-  grid-column: 2 / span 6;
-  justify-self: center;   /* center across the span */
+  grid-column: 2 / span 8;
+  justify-self: center; 
   align-self: start;
   width: 100%;
   padding: 8px;
   box-sizing: border-box;
 }
-
-/* the white card inside the diagram; center it and cap width */
 .diagram-in-grid .layout {
   background: var(--card);
   border-radius: 12px;
   padding: 14px;
   box-shadow: 0 8px 30px rgba(2,8,23,0.06);
   position: relative;
-  overflow: visible; /* must be visible so overlay + is never clipped */
-
-  /* control how big the white area becomes (increase to make diagram wider) */
+  overflow: visible;
   max-width: var(--diagram-inner-max);
   width: 100%;
   margin: 0 auto;
-
-  /* vertical sizing: make diagram big but not so large it pushes everything off-screen */
-  min-height: 220px;
+  min-height: 180px;
   height: min(640px, calc(var(--available-height) * 0.62));
 }
-
-/* bunkers grid inside the white card — matches the input columns (6) */
 .bunkers-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(8, 1fr);
   gap: 18px;
   align-items: end;
   padding: 10px;
   width: 100%;
   box-sizing: border-box;
 }
-
-/* each bunker cell centers its SVG; height clamped so it scales nicely */
 .bunker {
   position: relative;
   display:flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  height: clamp(120px, calc(var(--available-height) * 0.44), 420px);
+  height: clamp(100px, calc(var(--available-height) * 0.44), 420px);
 }
-
-/* SVG will scale to the cell width while maintaining aspect ratio.
-   80% gives padding inside each cell so label/overlay have room. */
-.bunker svg {
-  width: 80%;
-  height: auto;
-  max-height: 380px;
-  display: block;
-}
-
-/* bunker label */
+.bunker svg { width: 80%; height: auto; max-height: 380px; display:block; }
 .bunker .label {
   position: absolute;
   bottom: -18px;
@@ -282,58 +276,43 @@ background: red;
   white-space: nowrap;
 }
 
-/* hide per-bunker button (we use overlay buttons) */
-.bunker .add-coal-btn { display: none !important; }
-
-/* overlay + buttons — absolutely positioned by script */
+/* overlay + buttons */
 .top-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 1200; }
 .top-overlay .add-coal-overlay {
-  position: absolute;
-  pointer-events: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: none;
-  font-size: 22px;
-  background: #0ea5a4;
-  color: #fff;
-  box-shadow: 0 6px 18px rgba(2,6,23,0.14);
-  transform: translate(-50%, var(--add-coal-translate-y));
-  cursor: pointer;
-  z-index: 1300;
+  position: absolute; pointer-events: auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: 50%; border: none; font-size: 22px; background: #0ea5a4; color:#fff;
+  box-shadow: 0 6px 18px rgba(2,6,23,0.14); transform: translate(-50%, var(--add-coal-translate-y)); cursor: pointer; z-index:1300;
 }
+.bunker .add-coal-btn { display: none !important; }
 
-  /* popup */
-  .popup { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.35); z-index:1500; }
-  .popup.hidden { display:none; }
-  .popup-content {
-    background:#fff;
-    padding:18px;
-    border-radius:12px;
-    width:420px;
-    box-shadow:0 10px 40px rgba(2,6,23,0.18);
-  }
-  .popup-content h3 { margin:0 0 10px 0; font-size:18px; }
-  .popup-row { display:flex; gap:12px; margin:10px 0; align-items:center; }
-  .popup-row label { min-width:90px; font-size:14px; color:#444; }
-  .popup-row select, .popup-row input { flex:1; padding:10px; border-radius:8px; border:1px solid #e6e6e6; font-size:15px; }
-  .popup-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:14px; }
-  .btn { padding:10px 14px; border-radius:8px; border:none; cursor:pointer; font-size:14px; }
-  .btn-save { background:#0ea5a4; color:#fff; }
-  .btn-cancel { background:#f3f4f6; }
-  .btn-clear { background:#ef4444; color:#fff; }
+/* popup */
+.popup { position: fixed; inset: 0; display:flex; align-items:center; justify-content:center; background: rgba(0,0,0,0.35); z-index:1500; }
+.popup.hidden { display:none; }
+.popup-content { background:#fff; padding:18px; border-radius:12px; width:420px; box-shadow:0 10px 40px rgba(2,6,23,0.18); }
+.popup-content h3 { margin:0 0 10px 0; font-size:18px; }
+.popup-row { display:flex; gap:12px; margin:10px 0; align-items:center; }
+.popup-row label { min-width:90px; font-size:14px; color:#444; }
+.popup-row select, .popup-row input { flex:1; padding:10px; border-radius:8px; border:1px solid #e6e6e6; font-size:15px; }
+.popup-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:14px; }
+.btn { padding:10px 14px; border-radius:8px; border:none; cursor:pointer; font-size:14px; }
+.btn-save { background:#0ea5a4; color:#fff; }
+.btn-cancel { background:#f3f4f6; }
+.btn-clear { background:#ef4444; color:#fff; }
 
-/* top line & arrows */
+/* tooltip */
+.bunker .tooltip { display: none; position:absolute; bottom:100%; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.85); color:#fff; padding:8px 12px; border-radius:8px; font-size:13px; pointer-events:none; }
+.bunker:hover .tooltip { display:block; }
+
+/* top line & arrows (unchanged) */
 .top-line {
   position: absolute;
   top: var(--bunker-top-line-distance);
   left: var(--line-left-offset);
   right: var(--line-right-offset);
-  height: 2px;
-  background: #000;
+  height: 0;
+  background: transparent;
+  border-top: 2px solid var(--bunker-outline-color);
+  z-index: 1100;
 }
 .arrow {
   position: absolute;
@@ -353,23 +332,52 @@ background: red;
   border-top: var(--arrow-head-size) solid #000;
 }
 
-/* ================ POPUP / TOOLTIP ================ */
-.popup { position: fixed; inset: 0; display:flex; align-items:center; justify-content:center; background: rgba(0,0,0,0.35); z-index:1500; }
-.popup.hidden { display:none; }
-.popup-content { background:#fff; padding:18px; border-radius:12px; width:420px; box-shadow:0 10px 40px rgba(2,6,23,0.18); }
+/* -------------------- BUNKER SVG rules (FIXED) -------------------- */
+/* 1) Structural outline elements -> stroke-only */
+.bunker svg path,
+.bunker svg polygon,
+.bunker svg polyline,
+.bunker svg line {
+  fill: none !important;
+  stroke: var(--bunker-outline-color) !important;
+  stroke-width: var(--bunker-outline-width) !important;
+  stroke-linejoin: round !important;
+  stroke-linecap: round !important;
+  vector-effect: non-scaling-stroke !important;
+}
 
-/* tooltip */
-.bunker .tooltip { display: none; position:absolute; bottom:100%; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.85); color:#fff; padding:8px 12px; border-radius:8px; font-size:13px; pointer-events:none; }
-.bunker:hover .tooltip { display:block; }
+/* 2) DO NOT override fills for rect/circle/ellipse.
+      This is the critical fix: allow your JS's inline fill="..." to show.
+      We do remove strokes (so colored blocks are solid) but we DON'T set fill. */
+.bunker svg rect,
+.bunker svg circle,
+.bunker svg ellipse {
+  stroke: none !important;  /* keep them solid-looking, but DO NOT set fill here */
+}
 
-/* ================ RESPONSIVE ================ */
+/* 3) Keep explicitly marked keep-fill elements safe */
+.bunker svg .keep-fill {
+  fill: currentColor !important;
+  stroke: none !important;
+}
+
+/* 4) If arrow shapes are inside the SVG and must remain filled, mark them */
+.bunker svg .arrow-shaft,
+.bunker svg .arrow-head {
+  fill: #000 !important;
+  stroke: none !important;
+}
+.navbar .logout-btn{
+  background: red;
+}
+
+/* -------------------- Responsive -------------------- */
 @media (max-width: 1200px) {
-  :root { --page-max: 1100px; --diagram-inner-max: 900px; }
+  :root { --diagram-inner-max: 900px; --page-max: 1100px; }
   .main-container { padding: 0 10px; }
   .bunker svg { max-height: 320px; }
   .diagram-in-grid .layout { height: calc(var(--available-height) * 0.58); }
 }
-
 @media (max-width: 900px) {
   :root { --page-max: 980px; --diagram-inner-max: 860px; }
   .mills-grid { grid-template-columns: 140px repeat(6, 1fr); gap:10px; padding: 10px; }
@@ -378,9 +386,7 @@ background: red;
   .bunker svg { width: 86%; max-height: 260px; }
   .top-overlay .add-coal-overlay { width: 40px; height: 40px; font-size: 20px; }
 }
-
 @media (max-width: 600px) {
-  /* stack behavior: diagram will span full width and bunkers reduce to 3/2 columns */
   .mills-grid { grid-template-columns: 120px repeat(6, minmax(56px, 1fr)); gap:8px; padding: 8px; }
   .diagram-in-grid { grid-column: 1 / -1; }
   .diagram-in-grid .layout { max-width: 100%; height: calc(var(--available-height) * 0.46); min-height:160px; }
@@ -388,8 +394,6 @@ background: red;
   .bunker svg { width: 90%; max-height: 220px; }
   .top-overlay .add-coal-overlay { width: 36px; height: 36px; font-size:18px; }
 }
-
-/* small screens */
 @media (max-width: 420px) {
   :root { --input-height: 88px; }
   .mills-grid { grid-template-columns: 110px repeat(6, minmax(48px, 1fr)); gap:6px; padding: 8px; }
@@ -398,9 +402,10 @@ background: red;
   .input-section { flex-direction: column; width: calc(100% - 24px); margin: calc(var(--navbar-height) + 8px) 12px 8px; }
 }
 
-/* END cleaned stylesheet */
-
+/* final safety: ensure no body scrollbars */
+html, body { overflow: hidden; }
 </style>
+
 
 </head>
 <body>
@@ -408,11 +413,11 @@ background: red;
   <!-- Navbar kept in DOM but hidden via CSS -->
 <div class="navbar hidden-dom" aria-hidden="true">
   <img src="/public/images/abhitech-logo.png" alt="Company Logo">
-  <h1>COAL BLENDING RATIO</h1>
+  <h1>ABCD-Advanced Coal Bunkering and Database</h1>
 
   <div class="nav-buttons">
     <button onclick="window.location.href='/public/coals.html'">Go to Coals Page</button>
-    <button class="logout-btn" onclick="logoutUser()">Logout</button>
+    <button class="logout-btn" onclick="window.location.href='/public/login.html'">Logout</button>
   </div>
 </div>
 
@@ -444,6 +449,13 @@ background: red;
 
 <!-- MAIN GRID -->
 <div class="main-container">
+
+    <aside class="side-bar" aria-label="Units sidebar">
+      <div class="sidebar-title">Units</div>
+      <button class="unit-btn" type="button" aria-pressed="false">Unit 1</button>
+      <button class="unit-btn" type="button" aria-pressed="false">Unit 2</button>
+      <button class="unit-btn" type="button" aria-pressed="false">Unit 3</button>
+    </aside>
   <div class="mills-grid" id="millsGrid">
     <!-- header row (kept in DOM but hidden visually) -->
     <div class="hidden-dom" aria-hidden="true"></div>
@@ -453,6 +465,8 @@ background: red;
     <div class="mill green hidden-dom" aria-hidden="true">BUNKER 4</div>
     <div class="mill green hidden-dom" aria-hidden="true">BUNKER 5</div>
     <div class="mill green hidden-dom" aria-hidden="true">BUNKER 6</div>
+    <div class="mill green hidden-dom" aria-hidden="true">BUNKER 7</div>
+    <div class="mill green hidden-dom" aria-hidden="true">BUNKER 8</div>
     <div class="mill gcv hidden-dom" aria-hidden="true">GCV(Kcal/kg)</div>
     <div class="mill cost-head hidden-dom" aria-hidden="true">Cost/MT</div>
 
@@ -468,6 +482,8 @@ background: red;
     <div class="mill"><input type="text" class="percentage-input" data-row="1" data-mill="3" placeholder="%"></div>
     <div class="mill"><input type="text" class="percentage-input" data-row="1" data-mill="4" placeholder="%"></div>
     <div class="mill"><input type="text" class="percentage-input" data-row="1" data-mill="5" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="1" data-mill="6" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="1" data-mill="7" placeholder="%"></div>
     <div class="mill"><input type="text" id="gcvBox1" class="gcv-box" placeholder="GCV"></div>
     <div class="mill"><input type="text" id="costBox1" class="cost-input" placeholder="Cost/MT"></div>
 
@@ -483,6 +499,8 @@ background: red;
     <div class="mill"><input type="text" class="percentage-input" data-row="2" data-mill="3" placeholder="%"></div>
     <div class="mill"><input type="text" class="percentage-input" data-row="2" data-mill="4" placeholder="%"></div>
     <div class="mill"><input type="text" class="percentage-input" data-row="2" data-mill="5" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="2" data-mill="6" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="2" data-mill="7" placeholder="%"></div>
     <div class="mill"><input type="text" id="gcvBox2" class="gcv-box" placeholder="GCV"></div>
     <div class="mill"><input type="text" id="costBox2" class="cost-input" placeholder="Cost/MT"></div>
 
@@ -498,6 +516,8 @@ background: red;
     <div class="mill"><input type="text" class="percentage-input" data-row="3" data-mill="3" placeholder="%"></div>
     <div class="mill"><input type="text" class="percentage-input" data-row="3" data-mill="4" placeholder="%"></div>
     <div class="mill"><input type="text" class="percentage-input" data-row="3" data-mill="5" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="3" data-mill="6" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="3" data-mill="7" placeholder="%"></div>
     <div class="mill"><input type="text" id="gcvBox3" class="gcv-box" placeholder="GCV"></div>
     <div class="mill"><input type="text" id="costBox3" class="cost-input" placeholder="Cost/MT"></div>
 
@@ -513,6 +533,8 @@ background: red;
     <div class="mill"><input type="text" class="percentage-input" data-row="4" data-mill="3" placeholder="%"></div>
     <div class="mill"><input type="text" class="percentage-input" data-row="4" data-mill="4" placeholder="%"></div>
     <div class="mill"><input type="text" class="percentage-input" data-row="4" data-mill="5" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="4" data-mill="6" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="4" data-mill="7" placeholder="%"></div>
     <div class="mill"><input type="text" id="gcvBox4" class="gcv-box" placeholder="GCV"></div>
     <div class="mill"><input type="text" id="costBox4" class="cost-input" placeholder="Cost/MT"></div>
 
@@ -528,6 +550,8 @@ background: red;
     <div class="mill"><input type="text" class="percentage-input" data-row="5" data-mill="3" placeholder="%"></div>
     <div class="mill"><input type="text" class="percentage-input" data-row="5" data-mill="4" placeholder="%"></div>
     <div class="mill"><input type="text" class="percentage-input" data-row="5" data-mill="5" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="5" data-mill="6" placeholder="%"></div>
+    <div class="mill"><input type="text" class="percentage-input" data-row="5" data-mill="7" placeholder="%"></div>
     <div class="mill"><input type="text" id="gcvBox5" class="gcv-box" placeholder="GCV"></div>
     <div class="mill"><input type="text" id="costBox5" class="cost-input" placeholder="Cost/MT"></div>
 
@@ -541,12 +565,15 @@ background: red;
           <div class="top-line"></div>
 
           <!-- arrows positioned by percentage (centers of 6 equal columns) -->
-          <div class="arrow" style="left:9.3333%;"></div>
-          <div class="arrow" style="left:26%;"></div>
-          <div class="arrow" style="left:41.6667%;"></div>
-          <div class="arrow" style="left:58.3333%;"></div>
-          <div class="arrow" style="left:75%;"></div>
-          <div class="arrow" style="left:91.6667%;"></div>
+<div class="arrow" style="left:6.25%;"></div>
+<div class="arrow" style="left:18.75%;"></div>
+<div class="arrow" style="left:31.25%;"></div>
+<div class="arrow" style="left:43.75%;"></div>
+<div class="arrow" style="left:56.25%;"></div>
+<div class="arrow" style="left:68.75%;"></div>
+<div class="arrow" style="left:81.25%;"></div>
+<div class="arrow" style="left:93.75%;"></div>
+
         </div>
 
         <div class="bunkers-grid">
@@ -598,6 +625,23 @@ background: red;
             <div class="label">Bunker 6</div>
             <button class="add-coal-btn" onclick="openCoalPopup(5)">+</button>
           </div>
+
+          <div class="bunker" data-bunker="6">
+  <svg viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet">
+    <path d="M10 10 V100 L45 140 M55 140 L90 100 V10" />
+  </svg>
+  <div class="label">Bunker 7</div>
+  <button class="add-coal-btn" onclick="openCoalPopup(6)">+</button>
+</div>
+
+<div class="bunker" data-bunker="7">
+  <svg viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet">
+    <path d="M10 10 V100 L45 140 M55 140 L90 100 V10" />
+  </svg>
+  <div class="label">Bunker 8</div>
+  <button class="add-coal-btn" onclick="openCoalPopup(7)">+</button>
+</div>
+
         </div>
       </div> <!-- .layout -->
     </div> <!-- .diagram-in-grid -->
@@ -613,27 +657,34 @@ background: red;
     <div class="mill"><input type="text" class="flow-input" data-mill="3" placeholder="TPH"></div>
     <div class="mill"><input type="text" class="flow-input" data-mill="4" placeholder="TPH"></div>
     <div class="mill"><input type="text" class="flow-input" data-mill="5" placeholder="TPH"></div>
+    <div class="mill"><input type="text" class="flow-input" data-mill="6" placeholder="TPH"></div>
+    <div class="mill"><input type="text" class="flow-input" data-mill="7" placeholder="TPH"></div>
     <div></div>
     <div></div>
 
     <!-- Next Timer row -->
-<div class="mill next-timer">Next timer</div>
+<div class="mill next-timer">Bunker Empty time</div>
 <div class="mill"><input id="nextTimer0" type="text" class="flow-input timers-input" data-mill="0" placeholder="hh:mm:ss" readonly></div>
 <div class="mill"><input id="nextTimer1" type="text" class="flow-input timers-input" data-mill="1" placeholder="hh:mm:ss" readonly></div>
 <div class="mill"><input id="nextTimer2" type="text" class="flow-input timers-input" data-mill="2" placeholder="hh:mm:ss" readonly></div>
 <div class="mill"><input id="nextTimer3" type="text" class="flow-input timers-input" data-mill="3" placeholder="hh:mm:ss" readonly></div>
 <div class="mill"><input id="nextTimer4" type="text" class="flow-input timers-input" data-mill="4" placeholder="hh:mm:ss" readonly></div>
 <div class="mill"><input id="nextTimer5" type="text" class="flow-input timers-input" data-mill="5" placeholder="hh:mm:ss" readonly></div>
+<div class="mill"><input id="nextTimer6" type="text" class="flow-input timers-input" data-mill="6" placeholder="hh:mm:ss" readonly></div>
+<div class="mill"><input id="nextTimer7" type="text" class="flow-input timers-input" data-mill="7" placeholder="hh:mm:ss" readonly></div>
+
 
 
     <!-- Bunker Total row -->
-    <div class="mill bunker-total">Bunker Total</div>
+    <div class="mill bunker-total">Bunker Total %</div>
     <div class="mill"><input type="text" class="flow-input total-inputs" data-mill="0" placeholder="TPH"></div>
     <div class="mill"><input type="text" class="flow-input total-inputs" data-mill="1" placeholder="TPH"></div>
     <div class="mill"><input type="text" class="flow-input total-inputs" data-mill="2" placeholder="TPH"></div>
     <div class="mill"><input type="text" class="flow-input total-inputs" data-mill="3" placeholder="TPH"></div>
     <div class="mill"><input type="text" class="flow-input total-inputs" data-mill="4" placeholder="TPH"></div>
     <div class="mill"><input type="text" class="flow-input total-inputs" data-mill="5" placeholder="TPH"></div>
+    <div class="mill"><input type="text" class="flow-input total-inputs" data-mill="6" placeholder="TPH"></div>
+    <div class="mill"><input type="text" class="flow-input total-inputs" data-mill="7" placeholder="TPH"></div>
     <div></div>
     <div></div>
 
@@ -656,6 +707,8 @@ background: red;
     <div class="mill"><input type="text" id="nextBlend3" class="next-blend-box" readonly></div>
     <div class="mill"><input type="text" id="nextBlend4" class="next-blend-box" readonly></div>
     <div class="mill"><input type="text" id="nextBlend5" class="next-blend-box" readonly></div>
+    <div class="mill"><input type="text" id="nextBlend6" class="next-blend-box" readonly></div>
+    <div class="mill"><input type="text" id="nextBlend7" class="next-blend-box" readonly></div>
     <div></div>
     <div></div>
 
@@ -732,7 +785,7 @@ function formatHMS(sec) {
   return `${String(hrs).padStart(2,'0')}:${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
 }
 
-const bunkerTimers = new Array(6).fill(null);
+const bunkerTimers = new Array(8).fill(null);
 let lastGlobalBunkerCapacity = parseFloat(document.getElementById('bunkerCapacity')?.value) || 0;
 
 function clearBunkerTimer(i){
@@ -972,7 +1025,7 @@ function calculateBlended(){
   const capacityChanged = Math.abs((bunkerCapacity || 0) - (lastGlobalBunkerCapacity || 0)) > 1e-6;
   if(capacityChanged) lastGlobalBunkerCapacity = bunkerCapacity;
 
-  for(let m=0;m<6;m++){
+  for(let m=0;m<8;m++){
     // percentages for this mill per row (1..N)
     const p = [];
     for(let r=1;r<=NUM_COAL_ROWS;r++){
@@ -1015,7 +1068,7 @@ function calculateBlended(){
   }
 
   // timers for each bunker based on newly computed layers for N rows
-  for(let m=0;m<6;m++){
+  for(let m=0;m<8;m++){
     const layersSec = computeLayerSeconds(m);
     const flow = flowVals[m] || 0;
     const existing = bunkerTimers[m];
@@ -1050,7 +1103,7 @@ function calculateBlended(){
   } else { if(heatRateEl) heatRateEl.innerText = '--'; }
 
   // cost: compute per-row qty & cost same as before but for N rows
-  function getCoalQty(rowIndex){ let total=0; for(let m=0;m<6;m++) total+= parseFloat(document.querySelector(`.percentage-input[data-row="${rowIndex}"][data-mill="${m}"]`)?.value) || 0; return total; }
+  function getCoalQty(rowIndex){ let total=0; for(let m=0;m<8;m++) total+= parseFloat(document.querySelector(`.percentage-input[data-row="${rowIndex}"][data-mill="${m}"]`)?.value) || 0; return total; }
 
   let totalCost = 0, totalQty = 0;
   for(let r=1;r<=NUM_COAL_ROWS;r++){
@@ -1064,7 +1117,7 @@ function calculateBlended(){
 }
 
 function validateMillPercentages(){
-  for(let m=0;m<6;m++){
+  for(let m=0;m<8;m++){
     let hasPercent=false;
     for(let r=1;r<=NUM_COAL_ROWS;r++){ const v=parseFloat(document.querySelector(`.percentage-input[data-row="${r}"][data-mill="${m}"]`)?.value)||0; if(v>0){ hasPercent=true; break; } }
     const flow = parseFloat(document.querySelector(`.flow-input[data-mill="${m}"]`)?.value)||0;
@@ -1162,9 +1215,6 @@ document.addEventListener('DOMContentLoaded', function(){
   });
 });
 </script>
-
-  <!-- ---------- UI helper script (popup + mapping into hidden inputs) ---------- -->
-  <!-- Keep all scripts & logic unchanged (calculations rely on existing IDs/classes) -->
 <script>
 /* Updated popup/helper script that supports dynamic NUM_COAL_ROWS (default fallback = 5)
    - per-bunker capacity-aware timer calculation
@@ -1606,7 +1656,7 @@ setInterval(updateBunkerTooltips, 1500);
 
   // Update the "Bunker Total" inputs (class total-input) with percent string
   function updateBunkerTotalsUI(){
-    for(let m=0;m<6;m++){
+    for(let m=0;m<8;m++){
       const el = document.querySelector(`.total-input[data-mill="${m}"]`);
       const sumPct = getBunkerPercentSum(m);
       if(el){
@@ -1730,7 +1780,7 @@ setInterval(updateBunkerTooltips, 1500);
     try{
       updateBunkerTotalsUI();
 
-      for(let m=0;m<6;m++){
+      for(let m=0;m<8;m++){
         const secs = Math.max(0, Math.floor(computeTotalBunkerSeconds(m) || 0));
         if(secs > 0){
           startOrResetTotalCountdown(m, secs);
@@ -1754,8 +1804,6 @@ setInterval(updateBunkerTooltips, 1500);
   });
 })();
 </script>
-
-
 <script>
   // -------------------- Save wrapper so Submit button works --------------------
 // Make sure this is loaded before the DOMContentLoaded wiring that binds saveBtn
@@ -1824,8 +1872,6 @@ async function savePayload(e){
 window.savePayload = savePayload;
 
 </script>
-
-
 <script>
 (function(){
   if(window.__bunkerOverlayFix_v4) return;
@@ -1976,12 +2022,7 @@ window.savePayload = savePayload;
   window.__refreshBunkerOverlay = refreshOverlays;
 })();
 </script>
-
-
-  <!-- external JS (keep your original external input.js if it contains savePayload or DB fetches) -->
-  <script src="/public/input.js"></script>
-
-  <!-- COAL PERCENT TOOLTIP: paste this after <script src="/public/input.js"></script> -->
+<script src="/public/input.js"></script>
 <style>
   /* tooltip */
   .coal-tooltip {
@@ -2004,7 +2045,6 @@ window.savePayload = savePayload;
   .coal-tooltip .kv span.key { color:#666; }
   .coal-tooltip .kv span.val { font-weight:600; text-align:right; }
 </style>
-
 <script>
 // Improved tooltip (prefers per-cell values; computes AFT if missing)
 (function(){
@@ -2311,25 +2351,21 @@ function attachToRects(){
 })();
 
 </script>
-
-
-<!-- Paste this block after your other scripts (once) -->
-
 <script>
-/* Live per-bunker countdown manager + higher-frequency, real-time percent decay
-   - updates every 200ms using actual elapsed time for smooth, realtime feel
-   - keeps original inputs and wiring (percentage-input, flow-input, bunkerCapacity)
+/* Live per-bunker countdown manager — strict 1s ticks, percent synced to remaining seconds.
+   Behavior:
+   - Every second: lossThisSecond = currentTotalPercent / remainingSeconds
+   - Apply lossThisSecond once, then decrement remaining by 1.
+   - When remaining reaches 0, percentages are forced to 0.
 */
 (function(){
   'use strict';
   if(window.__liveBunkerTimers) return;
   window.__liveBunkerTimers = true;
 
-  const BUNKER_COUNT = 6;
-  // update interval in milliseconds (lower = smoother, higher CPU). 200ms is a good balance.
-  const TICK_MS = 200;
+  const BUNKER_COUNT = 8;
 
-  // small helpers
+  // helpers
   function pad2(n){ return String(n).padStart(2,'0'); }
   function formatHMS(totalSeconds){
     const s = Math.max(0, Math.floor(Number(totalSeconds) || 0));
@@ -2338,7 +2374,6 @@ function attachToRects(){
     const secs = s % 60;
     return `${pad2(hrs)}:${pad2(mins)}:${pad2(secs)}`;
   }
-
   function parsePercent(raw){
     if(raw == null) return 0;
     let s = String(raw).trim();
@@ -2347,14 +2382,13 @@ function attachToRects(){
     const v = parseFloat(s);
     return isFinite(v) ? v : 0;
   }
-
   function parseNumber(raw){
     if(raw == null) return 0;
     const v = parseFloat(String(raw).trim());
     return isFinite(v) ? v : 0;
   }
 
-  // compute sum of percent inputs for a bunker
+  // DOM helpers
   function getTotalPercentForBunker(bIndex){
     const nodes = document.querySelectorAll(`.percentage-input[data-mill="${bIndex}"]`);
     let total = 0;
@@ -2363,47 +2397,23 @@ function attachToRects(){
     if(total > 100) total = 100;
     return total;
   }
-
   function getBunkerCapacity(){
     const el = document.getElementById('bunkerCapacity');
     return el ? parseNumber(el.value) : 0;
   }
-
   function getFlowForBunker(bIndex){
     const el = document.querySelector(`.flow-input[data-mill="${bIndex}"]`);
     return el ? parseNumber(el.value) : 0;
   }
 
-  // formatting percent for writing back to inputs (2 decimals max, trim trailing .00)
+  // format percent to write to inputs (2 decimals, drop trailing .00)
   function formatPercentValue(v){
     if(!isFinite(v) || Math.abs(v) < 1e-9) return '0';
     const s = v.toFixed(2);
     return String(Number(s));
   }
 
-  // state per bunker
-  const timers = new Array(BUNKER_COUNT).fill(null).map(() => ({
-    intervalId: null,
-    remaining: 0,                // seconds (can be fractional)
-    lastKnownTotalSeconds: 0,    // original computed full seconds
-    startTotalPct: 0,            // percent at timer start
-    lastTickMs: 0                // performance.now() of last tick
-  }));
-
-  function _updateTimerUI(bIndex){
-    const el = document.getElementById('nextTimer' + bIndex);
-    if(!el) return;
-    const rem = timers[bIndex].remaining || 0;
-    if(rem > 0.0001){
-      el.value = formatHMS(rem);
-      el.dataset.seconds = String(Math.max(0, Math.floor(rem)));
-    } else {
-      el.value = '';
-      el.dataset.seconds = '0';
-    }
-  }
-
-  // set all percentage inputs for bunker to exactly zero (used when timer expires)
+  // write zero to every percent input of bunker
   function setPercentagesToZero(bIndex){
     const nodes = document.querySelectorAll(`.percentage-input[data-mill="${bIndex}"]`);
     nodes.forEach(n => {
@@ -2413,13 +2423,13 @@ function attachToRects(){
     });
   }
 
-  // proportionally reduce percentage inputs by loss amount (loss is in percent units, can be fractional)
+  // proportionally reduce percentage inputs by lossAmount (percent units; called once per second)
   function decrementPercentagesBy(bIndex, lossAmount){
     if(!(lossAmount > 0)) return;
     const nodes = Array.from(document.querySelectorAll(`.percentage-input[data-mill="${bIndex}"]`));
     if(nodes.length === 0) return;
 
-    // current values
+    // read current values & suffix
     const items = nodes.map(n => {
       const raw = String(n.value || '').trim();
       return { node: n, value: parsePercent(raw), hadPct: raw.endsWith('%') };
@@ -2428,7 +2438,7 @@ function attachToRects(){
     let currentTotal = items.reduce((s,it) => s + it.value, 0);
     if(currentTotal <= 0) return;
 
-    // if loss >= currentTotal, zero out
+    // if loss >= total, zero everything
     if(lossAmount >= currentTotal - 1e-9){
       nodes.forEach(n => {
         const hadPct = String(n.value || '').trim().endsWith('%');
@@ -2437,7 +2447,7 @@ function attachToRects(){
       return;
     }
 
-    // compute new values proportionally; adjust last element for rounding drift
+    // compute new values proportionally; adjust last element to fix rounding drift
     const newVals = [];
     let acc = 0;
     for(let i=0;i<items.length;i++){
@@ -2452,7 +2462,7 @@ function attachToRects(){
     const targetTotal = currentTotal - lossAmount;
     const diff = targetTotal - acc;
     if(Math.abs(diff) > 1e-6){
-      // adjust the largest remaining value
+      // absorb diff into largest remaining value
       let idx = -1, maxVal = -1;
       for(let i=0;i<newVals.length;i++){
         if(newVals[i].value > maxVal){ maxVal = newVals[i].value; idx = i; }
@@ -2469,6 +2479,27 @@ function attachToRects(){
     });
   }
 
+  // per-bunker state
+  const timers = new Array(BUNKER_COUNT).fill(null).map(() => ({
+    intervalId: null,
+    remaining: 0,             // integer seconds left
+    lastKnownTotalSeconds: 0, // original seconds computed when started
+    startTotalPct: 0         // percent at start (kept for reference only)
+  }));
+
+  function _updateTimerUI(bIndex){
+    const el = document.getElementById('nextTimer' + bIndex);
+    if(!el) return;
+    const rem = Math.max(0, Math.floor(timers[bIndex].remaining || 0));
+    if(rem > 0){
+      el.value = formatHMS(rem);
+      el.dataset.seconds = String(rem);
+    } else {
+      el.value = '';
+      el.dataset.seconds = '0';
+    }
+  }
+
   function clearBunkerTimer(bIndex, dueToExpiry){
     const t = timers[bIndex];
     if(!t) return;
@@ -2476,27 +2507,20 @@ function attachToRects(){
     t.remaining = 0;
     t.lastKnownTotalSeconds = 0;
     t.startTotalPct = 0;
-    t.lastTickMs = 0;
     _updateTimerUI(bIndex);
-
     if(dueToExpiry){
       setPercentagesToZero(bIndex);
     }
   }
 
-  // start or restart a bunker timer with the provided fullSeconds
+  // start/restart timer (ensure fullSeconds >= 1)
   function setBunkerTimer(bIndex, fullSeconds, startTotalPct){
     bIndex = Number(bIndex);
     if(isNaN(bIndex) || bIndex < 0 || bIndex >= timers.length) return;
-    const secs = Math.max(0, Number(fullSeconds) || 0);
+    const secs = Math.max(1, Math.floor(Number(fullSeconds) || 0)); // ensure >=1
     const t = timers[bIndex];
 
-    if(secs <= 0){
-      clearBunkerTimer(bIndex);
-      return;
-    }
-
-    // If practically same, just update pct and keep running
+    // if running and almost same length, update start pct and keep running
     if(t.intervalId && Math.abs((t.lastKnownTotalSeconds||0) - secs) <= 1){
       t.startTotalPct = Number(startTotalPct) || t.startTotalPct || 0;
       return;
@@ -2504,36 +2528,37 @@ function attachToRects(){
 
     if(t.intervalId) clearBunkerTimer(bIndex);
 
-    // initialize state (allow fractional remaining seconds)
     t.remaining = secs;
     t.lastKnownTotalSeconds = secs;
     t.startTotalPct = Number(startTotalPct) || 0;
-    t.lastTickMs = performance.now();
     _updateTimerUI(bIndex);
 
-    // run high-frequency ticking using actual elapsed time
+    // 1-second tick: compute lossThisSecond based on current total & remaining seconds
     t.intervalId = setInterval(() => {
-      const now = performance.now();
-      const dt = Math.max(0, (now - (t.lastTickMs || now)) / 1000); // seconds (fractional)
-      t.lastTickMs = now;
+      // read current total percent live
+      const currentTotal = getTotalPercentForBunker(bIndex);
+      const remainingSec = Math.max(1, Math.floor(t.remaining || 1)); // protect divide by zero
 
-      // compute per-second loss based on the original startTotalPct and original seconds
-      const lossPerSec = (t.lastKnownTotalSeconds > 0 && t.startTotalPct > 0) ? (t.startTotalPct / t.lastKnownTotalSeconds) : 0;
-      const lossThisTick = lossPerSec * dt;
-      if(lossThisTick > 0){
-        decrementPercentagesBy(bIndex, lossThisTick);
+      // compute a loss that sums to currentTotal across remainingSec seconds
+      const lossThisSecond = currentTotal / remainingSec;
+
+      if(lossThisSecond > 0){
+        decrementPercentagesBy(bIndex, lossThisSecond);
       }
 
-      t.remaining = Math.max(0, t.remaining - dt);
-      if(t.remaining <= 1e-6){
+      // now decrement remaining by 1 (integer tick)
+      t.remaining = Math.max(0, Math.floor(t.remaining - 1));
+
+      if(t.remaining <= 0){
+        // ensure exactly zero
         clearBunkerTimer(bIndex, true);
       } else {
         _updateTimerUI(bIndex);
       }
-    }, TICK_MS);
+    }, 1000);
   }
 
-  // compute seconds from the formula and call setBunkerTimer/clear
+  // compute seconds from formula and start/clear
   function computeAndStartForBunker(bIndex){
     const totalPct = getTotalPercentForBunker(bIndex); // 0..100
     const bunkerCap = getBunkerCapacity();
@@ -2547,7 +2572,7 @@ function attachToRects(){
     // hours = (totalPct/100 * bunkerCap) / flow
     // seconds = hours * 3600
     const hours = (totalPct / 100) * bunkerCap / flow;
-    const seconds = Math.max(0, Math.floor(hours * 3600));
+    const seconds = Math.max(1, Math.floor(hours * 3600)); // ensure at least 1s
 
     setBunkerTimer(bIndex, seconds, totalPct);
     return seconds;
@@ -2557,9 +2582,8 @@ function attachToRects(){
     for(let i=0;i<BUNKER_COUNT;i++) computeAndStartForBunker(i);
   }
 
-  // wire inputs to recompute for the right bunker(s)
+  // wire inputs -> recompute
   function wireInputs(){
-    // percentages: recompute only that bunker on input/change
     document.querySelectorAll('.percentage-input').forEach(inp => {
       if(inp.__liveTimersWired) return;
       inp.__liveTimersWired = true;
@@ -2575,7 +2599,6 @@ function attachToRects(){
       });
     });
 
-    // flows: recompute only that bunker
     document.querySelectorAll('.flow-input').forEach(inp => {
       if(inp.__liveTimersWired) return;
       inp.__liveTimersWired = true;
@@ -2591,7 +2614,6 @@ function attachToRects(){
       });
     });
 
-    // bunkerCapacity: recompute all
     const cap = document.getElementById('bunkerCapacity');
     if(cap && !cap.__liveTimersWired){
       cap.__liveTimersWired = true;
@@ -2600,10 +2622,9 @@ function attachToRects(){
     }
   }
 
-  // init on DOM ready
+  // init
   function init(){
     wireInputs();
-    // ensure timer UI elements exist; create no-op placeholders if missing
     for(let i=0;i<BUNKER_COUNT;i++){
       if(!document.getElementById('nextTimer'+i)){
         const fallback = document.createElement('input');
@@ -2623,21 +2644,16 @@ function attachToRects(){
     init();
   }
 
-  // expose for console debugging / manual controls
+  // exports & cleanup
   window.setBunkerTimer = setBunkerTimer;
   window.clearBunkerTimer = clearBunkerTimer;
   window.computeAndStartForBunker = computeAndStartForBunker;
   window.computeAllAndStart = computeAllAndStart;
-
-  // cleanup on unload
   window.addEventListener('beforeunload', function(){
     for(let i=0;i<timers.length;i++) if(timers[i].intervalId) clearInterval(timers[i].intervalId);
   });
-
 })();
 </script>
-
-
 <script>
 /* Robust live bunker timer + percent drain (fixed selector & resilience)
    - Place this near end of body (after DOM & your markup).
@@ -2657,7 +2673,7 @@ function attachToRects(){
   if(window.__bunkerManagerV2) return;
   window.__bunkerManagerV2 = true;
 
-  const BUNKER_COUNT = 6;
+  const BUNKER_COUNT = 8;
 
   // ---------- small helpers ----------
   const safeParse = v => {
@@ -3043,9 +3059,5 @@ function attachToRects(){
 
 })();
 </script>
-
-
-
-
 </body>
 </html>
