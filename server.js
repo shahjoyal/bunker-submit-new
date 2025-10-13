@@ -19,7 +19,7 @@ app.use(express.static(path.join(__dirname)));
 
 // Root route returning your input.html in public/
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '/public/input.html'));
+  res.sendFile(path.join(__dirname, '/public/login.html'));
 });
 
 const MONGO_URI = process.env.MONGO_URI;
@@ -733,3 +733,4 @@ app.listen(PORT, () => console.log(`Server listening on ${PORT}`));
 //the file that i have shared are basically 3 files these are the files for my website in this website i am already 
 //impkementing the logic of submitting data to the database now similarly for a specific coal that i am submiting i want that 
 //the specific coal colour should also get submitted to the database so that
+
