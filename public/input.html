@@ -405,7 +405,19 @@ html, body {
 /* final safety: ensure no body scrollbars */
 html, body { overflow: hidden; }
 </style>
+    <script>
+     if(localStorage.getItem('isLoggedIn') !== 'true') {
+    alert('You must login first!');
+    window.location.href = '/public/login.html'; 
+} else {
+    document.body.style.display = 'block';
+}
+    function logoutUser() {
+  localStorage.setItem('isLoggedIn', 'false'); 
+  window.location.href = '/public/login.html'; 
+}
 
+  </script>
 
 </head>
 <body>
@@ -417,7 +429,7 @@ html, body { overflow: hidden; }
 
   <div class="nav-buttons">
     <button onclick="window.location.href='/public/coals.html'">Go to Coals Page</button>
-    <button class="logout-btn" onclick="window.location.href='/public/login.html'">Logout</button>
+    <button class="logout-btn" onclick="logoutUser()">Logout</button>
   </div>
 </div>
 
@@ -3308,3 +3320,4 @@ function attachToRects(){
 </script>
 </body>
 </html>
+
