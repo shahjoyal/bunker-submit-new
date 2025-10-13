@@ -146,6 +146,19 @@
   }
 
 </style>
+      <script>
+     if(localStorage.getItem('isLoggedIn') !== 'true') {
+    alert('You must login first!');
+    window.location.href = '/public/login.html'; 
+} else {
+    document.body.style.display = 'block';
+}
+    function logoutUser() {
+  localStorage.setItem('isLoggedIn', 'false'); 
+  window.location.href = '/public/login.html'; 
+}
+
+  </script>
 </head>
 <body>
 
@@ -425,10 +438,11 @@
 </script>
 
 <!-- Example stub for logout (replace with your real implementation) -->
-<script>
+<!-- <script>
 function logoutUser(){
   alert('Logout clicked — implement your logout logic.');
 }
-</script>
+</script> -->
 </body>
 </html>
+
