@@ -138,15 +138,24 @@ function collectFormData(){
     }
   }
 
+  // --- include client-side persistent coal colour map (if present)
+  var coalColorMap = {};
+  try {
+    var rawMap = localStorage.getItem('__coalColorMap_v2');
+    if (rawMap) coalColorMap = JSON.parse(rawMap);
+  } catch (e) { coalColorMap = {}; }
+
   return {
     rows: rows,
     flows: flows,
     generation: generation,
     ts: Date.now(),
-    // added fields:
     bunkerCapacity: bunkerCapacity,
-    bunkerCapacities: bunkerCapacities
+    bunkerCapacities: bunkerCapacities,
+    // NEW: send persistent colour map to server so server can store colours with bunkers
+    coalColorMap: coalColorMap
   };
+
 }
 
 
