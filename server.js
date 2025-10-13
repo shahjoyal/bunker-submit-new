@@ -79,9 +79,11 @@ const BlendSchema = new mongoose.Schema({
       coal: String,
       percent: Number,
       gcv: Number,
-      cost: Number
+      cost: Number,
+      color: String    // <- persist the colour hex (e.g. "#aabbcc")
     }]
   }],
+
 
   // add to BlendSchema definition (after generation:)
 bunkerCapacity: { type: Number, default: 0 },          // global capacity (single input)
@@ -215,7 +217,151 @@ function calcAFT(ox) {
 }
 
 /* -------------------- compute blend metrics (per-mill aware) -------------------- */
-async function computeBlendMetrics(rows, flows, generation) {
+// async function computeBlendMetrics(rows, flows, generation, coalColorMap = {}) {
+//   // rows: array (each row may have: coal (string or object), percentages[], gcv, cost)
+//   const oxKeys = ["SiO2","Al2O3","Fe2O3","CaO","MgO","Na2O","K2O","SO3","TiO2"];
+
+//   // Load all coal docs once
+//   const allCoals = await Coal.find().lean();
+//   const byId = {};
+//   const byNameLower = {};
+//   allCoals.forEach(c => {
+//     if (c._id) byId[String(c._id)] = c;
+//     if (c.coal) byNameLower[String(c.coal).toLowerCase()] = c;
+//   });
+
+//   function findCoalRef(ref) {
+//     if (!ref) return null;
+//     if (byId[String(ref)]) return byId[String(ref)];
+//     const lower = String(ref).toLowerCase();
+//     if (byNameLower[lower]) return byNameLower[lower];
+//     return null;
+//   }
+
+//   // helper to get per-mill coalRef from row (row.coal may be string or object)
+//   function coalRefForRowAndMill(row, mill) {
+//     if (!row) return null;
+//     if (row.coal && typeof row.coal === 'object' && row.coal !== null) {
+//       return row.coal[String(mill)] || '';
+//     }
+//     return row.coal || '';
+//   }
+
+//   const blendedGCVPerMill = [];
+//   const aftPerMill = [];
+
+//   for (let m = 0; m < 8; m++) {
+//     let blendedGCV = 0;
+//     const ox = {};
+//     oxKeys.forEach(k => ox[k] = 0);
+
+//     for (let i = 0; i < (rows ? rows.length : 0); i++) {
+//       const row = rows[i] || {};
+//       const perc = (Array.isArray(row.percentages) && row.percentages[m]) ? Number(row.percentages[m]) : 0;
+//       const weight = perc / 100;
+
+//       // resolve per-mill coalRef if supplied
+//       const coalRef = coalRefForRowAndMill(row, m);
+//       const coalDoc = findCoalRef(coalRef);
+
+//       // gcv: prefer explicit row.gcv (global) else coalDoc.gcv
+//       const gcvVal = (row.gcv !== undefined && row.gcv !== null && row.gcv !== '') ? Number(row.gcv) : (coalDoc ? (Number(coalDoc.gcv) || 0) : 0);
+//       blendedGCV += gcvVal * weight;
+
+//       // accumulate oxides from coalDoc if present (or from row(if provided))
+//       if (coalDoc) {
+//         oxKeys.forEach(k => {
+//           ox[k] += (Number(coalDoc[k]) || 0) * weight;
+//         });
+//       } else {
+//         oxKeys.forEach(k => {
+//           if (row[k] !== undefined && row[k] !== null && row[k] !== '') {
+//             ox[k] += (Number(row[k]) || 0) * weight;
+//           }
+//         });
+//       }
+//     } // rows loop
+
+//     blendedGCVPerMill.push(Number(blendedGCV));
+//     const oxTotal = Object.values(ox).reduce((s, v) => s + (Number(v) || 0), 0);
+//     const aftVal = (oxTotal === 0) ? null : Number(calcAFT(ox));
+//     aftPerMill.push(aftVal);
+//   } // mills loop
+
+//   // totals & weighted averages using flows
+//   let totalFlow = 0;
+//   let weightedGCV = 0;
+//   let weightedAFT = 0;
+//   let contributedAFTFlow = 0;
+
+//   for (let m = 0; m < 8; m++) {
+//     const flow = (Array.isArray(flows) && flows[m]) ? Number(flows[m]) : 0;
+//     totalFlow += flow;
+//     weightedGCV += flow * (blendedGCVPerMill[m] || 0);
+
+//     const aftVal = aftPerMill[m];
+//     if (aftVal !== null && !isNaN(aftVal)) {
+//       weightedAFT += flow * aftVal;
+//       contributedAFTFlow += flow;
+//     }
+//   }
+
+//   const avgGCV = totalFlow > 0 ? (weightedGCV / totalFlow) : 0;
+//   const avgAFT = contributedAFTFlow > 0 ? (weightedAFT / contributedAFTFlow) : null;
+//   const heatRate = (generation && generation > 0 && totalFlow > 0) ? ((totalFlow * avgGCV) / generation) : null;
+
+//   // compute cost rate (weighted by sum of percentages per row)
+//   function rowQtySum(row) {
+//     if (!row || !Array.isArray(row.percentages)) return 0;
+//     return row.percentages.reduce((s, v) => s + (Number(v) || 0), 0);
+//   }
+//   const qtyPerRow = (rows || []).map(rowQtySum);
+//   const costPerRow = (rows || []).map((r, idx) => {
+//     if (r && r.cost !== undefined && r.cost !== null && r.cost !== '') return Number(r.cost) || 0;
+//     const cdoc = findCoalRef((r || {}).coal);
+//     return cdoc ? (Number(cdoc.cost) || 0) : 0;
+//   });
+
+//   let totalCost = 0, totalQty = 0;
+//   for (let i = 0; i < qtyPerRow.length; i++) {
+//     totalCost += (qtyPerRow[i] || 0) * (costPerRow[i] || 0);
+//     totalQty += (qtyPerRow[i] || 0);
+//   }
+//   const costRate = totalQty > 0 ? (totalCost / totalQty) : 0;
+
+//   // Build per-bunker structure (independent storage)
+//   const bunkers = [];
+//   for (let m = 0; m < 8; m++) {
+//     const layers = [];
+//     for (let rIdx = 0; rIdx < (rows || []).length; rIdx++) {
+//       const row = rows[rIdx];
+//       const pct = (Array.isArray(row.percentages) && row.percentages[m]) ? Number(row.percentages[m]) : 0;
+//       if (!pct || pct <= 0) continue;
+//       const coalRef = coalRefForRowAndMill(row, m);
+//       const coalDoc = findCoalRef(coalRef);
+//       layers.push({
+//         rowIndex: rIdx + 1,
+//         coal: coalDoc ? coalDoc.coal : (coalRef || ''),
+//         percent: Number(pct),
+//         gcv: coalDoc ? (Number(coalDoc.gcv) || Number(row.gcv || 0)) : Number(row.gcv || 0),
+//         cost: coalDoc ? (Number(coalDoc.cost) || Number(row.cost || 0)) : Number(row.cost || 0)
+//       });
+//     }
+//     bunkers.push({ layers });
+//   }
+
+//   return {
+//     totalFlow: Number(totalFlow),
+//     avgGCV: Number(avgGCV),
+//     avgAFT: (avgAFT === null ? null : Number(avgAFT)),
+//     heatRate: (heatRate === null ? null : Number(heatRate)),
+//     costRate: Number(costRate),
+//     aftPerMill: aftPerMill.map(v => (v === null ? null : Number(v))),
+//     blendedGCVPerMill: blendedGCVPerMill.map(v => Number(v)),
+//     bunkers
+//   };
+// }
+async function computeBlendMetrics(rows, flows, generation, coalColorMap = {}) {
   // rows: array (each row may have: coal (string or object), percentages[], gcv, cost)
   const oxKeys = ["SiO2","Al2O3","Fe2O3","CaO","MgO","Na2O","K2O","SO3","TiO2"];
 
@@ -243,6 +389,50 @@ async function computeBlendMetrics(rows, flows, generation) {
       return row.coal[String(mill)] || '';
     }
     return row.coal || '';
+  }
+
+  // Helper to resolve a colour for a coal reference / coalDoc
+  function resolveColorForCoal(coalRef, coalDoc) {
+    // 1) prefer DB coalDoc.color
+    if (coalDoc && coalDoc.color) {
+      return String(coalDoc.color).trim();
+    }
+
+    // Normalize helpers
+    const tryKeys = k => {
+      if (!k && k !== 0) return null;
+      if (coalColorMap == null) return null;
+      if (coalColorMap[k]) return coalColorMap[k];
+      return null;
+    };
+
+    // 2) try keys related to the coalDoc._id
+    if (coalDoc && coalDoc._id) {
+      const idStr = String(coalDoc._id);
+      // common client maps may store "id:<id>" or raw id
+      const v1 = tryKeys(`id:${idStr}`) || tryKeys(idStr);
+      if (v1) return String(v1).trim();
+    }
+
+    // 3) try keys related to the coalRef value (name or id)
+    if (coalRef) {
+      const refStr = String(coalRef);
+      const v2 = tryKeys(`name:${refStr}`) || tryKeys(refStr);
+      if (v2) return String(v2).trim();
+
+      const lowerRef = refStr.toLowerCase();
+      const v3 = tryKeys(lowerRef);
+      if (v3) return String(v3).trim();
+    }
+
+    // 4) try byNameLower lookup value's color (if earlier lookups didn't have color)
+    if (coalRef) {
+      const byNameEntry = byNameLower[String(coalRef).toLowerCase()];
+      if (byNameEntry && byNameEntry.color) return String(byNameEntry.color).trim();
+    }
+
+    // no color found
+    return '';
   }
 
   const blendedGCVPerMill = [];
@@ -327,7 +517,7 @@ async function computeBlendMetrics(rows, flows, generation) {
   }
   const costRate = totalQty > 0 ? (totalCost / totalQty) : 0;
 
-  // Build per-bunker structure (independent storage)
+  // Build per-bunker structure (independent storage) and include colors
   const bunkers = [];
   for (let m = 0; m < 8; m++) {
     const layers = [];
@@ -337,12 +527,17 @@ async function computeBlendMetrics(rows, flows, generation) {
       if (!pct || pct <= 0) continue;
       const coalRef = coalRefForRowAndMill(row, m);
       const coalDoc = findCoalRef(coalRef);
+
+      // Resolve color using helper
+      const layerColor = resolveColorForCoal(coalRef, coalDoc);
+
       layers.push({
         rowIndex: rIdx + 1,
         coal: coalDoc ? coalDoc.coal : (coalRef || ''),
         percent: Number(pct),
         gcv: coalDoc ? (Number(coalDoc.gcv) || Number(row.gcv || 0)) : Number(row.gcv || 0),
-        cost: coalDoc ? (Number(coalDoc.cost) || Number(row.cost || 0)) : Number(row.cost || 0)
+        cost: coalDoc ? (Number(coalDoc.cost) || Number(row.cost || 0)) : Number(row.cost || 0),
+        color: layerColor || ''
       });
     }
     bunkers.push({ layers });
@@ -413,7 +608,9 @@ app.post('/api/blend', async (req, res) => {
     const rowsToSave = (rows || []).map(row => resolveRowCoalField(row));
 
     // compute metrics including bunkers
-    const metrics = await computeBlendMetrics(rowsToSave, flows, generation);
+    // compute metrics including bunkers (pass client-sent coalColorMap)
+const metrics = await computeBlendMetrics(rowsToSave, flows, generation, (req.body && req.body.coalColorMap) ? req.body.coalColorMap : {});
+
 
     // create and save blend - include bunkers from metrics
 const doc = new Blend(Object.assign({}, {
@@ -481,7 +678,8 @@ const { rows, flows, generation, bunkerCapacity, bunkerCapacities } = req.body;
     }
 
     const rowsToSave = (rows || []).map(row => resolveRowCoalField(row));
-    const metrics = await computeBlendMetrics(rowsToSave, flows, generation);
+    const metrics = await computeBlendMetrics(rowsToSave, flows, generation, (req.body && req.body.coalColorMap) ? req.body.coalColorMap : {});
+
 
 const updated = await Blend.findByIdAndUpdate(
   id,
@@ -532,3 +730,6 @@ app.get('/api/coal/count', async (req, res) => {
 /* -------------------- Start server -------------------- */
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server listening on ${PORT}`));
+//the file that i have shared are basically 3 files these are the files for my website in this website i am already 
+//impkementing the logic of submitting data to the database now similarly for a specific coal that i am submiting i want that 
+//the specific coal colour should also get submitted to the database so that
