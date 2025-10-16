@@ -88,12 +88,21 @@ function findCoalInDB(idOrName){
                    else store object { "0": "id0", "1": "id1", . } (mill index keys)
 */
 // REPLACE existing collectFormData() with this version
+// put this in input.js replacing the old collectFormData() (keeps same returned shape + clientBunkers)
+function secondsToHHMMSS(secondsRaw) {
+  if (!isFinite(secondsRaw) || secondsRaw === null) return '00:00:00';
+  const s = Math.max(0, Math.round(secondsRaw));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+}
+
 function collectFormData(){
   var rows = [];
   var N = window.NUM_COAL_ROWS || 5;
   for(var r=1;r<=N;r++){
     var coalGlobal = _getEl('coalName' + r) ? _getEl('coalName' + r).value : '';
-    // build per-mill mapping if any per-cell present
     var perCellMap = {};
     var anyPerCell = false;
     for(var m=0;m<8;m++){
@@ -104,13 +113,11 @@ function collectFormData(){
       if(cid) perCellMap[String(m)] = cid;
     }
     var coalField = anyPerCell ? perCellMap : (coalGlobal || '');
-    // collect percentages for this row (length 6)
     var percentages = [];
     for(var mm=0; mm<8; mm++){
       var p = document.querySelector(`.percentage-input[data-row="${r}"][data-mill="${mm}"]`);
       percentages.push(p ? _parseFloatSafe(p.value) : 0);
     }
-    // gcv/cost - pick global if present else undefined (server will resolve)
     var gcv = _parseFloatSafe(_getElVal('gcvBox'+r));
     var cost = _parseFloatSafe(_getElVal('costBox'+r));
     rows.push({ coal: coalField, percentages: percentages, gcv: gcv, cost: cost });
@@ -121,11 +128,8 @@ function collectFormData(){
   for(var i=0;i<flowEls.length;i++) flows.push(_parseFloatSafe(flowEls[i].value));
 
   var generation = _parseFloatSafe(_getElVal('generation'));
-
-  // NEW: global bunker capacity (single input #bunkerCapacity)
   var bunkerCapacity = _parseFloatSafe(_getElVal('bunkerCapacity'));
 
-  // NEW: per-bunker capacities (if present in DOM: .bunker-capacity[data-mill="i"] or #bunkerCapacity{i})
   var bunkerCapacities = [];
   for(var bi=0; bi<8; bi++){
     var capEl = document.querySelector(`.bunker-capacity[data-mill="${bi}"]`) || document.getElementById('bunkerCapacity' + bi);
@@ -133,17 +137,51 @@ function collectFormData(){
       var v = (capEl.value !== undefined) ? capEl.value : (capEl.dataset && capEl.dataset.value ? capEl.dataset.value : capEl.textContent);
       bunkerCapacities.push(_parseFloatSafe(v));
     } else {
-      // fallback: push 0 so array has fixed size
       bunkerCapacities.push(0);
     }
   }
 
-  // --- include client-side persistent coal colour map (if present)
   var coalColorMap = {};
   try {
     var rawMap = localStorage.getItem('__coalColorMap_v2');
     if (rawMap) coalColorMap = JSON.parse(rawMap);
   } catch (e) { coalColorMap = {}; }
+
+  // --- NEW: build client-side bunker representation including timers ---
+  var clientBunkers = [];
+  for(var bi=0; bi<8; bi++){
+    // computeLayerSeconds returns bottom->top seconds per your code
+    var layerSeconds = (typeof computeLayerSeconds === 'function') ? (computeLayerSeconds(bi) || []) : [];
+    var layers = [];
+    for(var li=0; li<layerSeconds.length; li++){
+      var seconds = layerSeconds[li];
+      // determine the rowIndex that corresponds to this bottom->top element:
+      // rowIndex (DOM row) = NUM_COAL_ROWS - li
+      var rowIndex = (window.NUM_COAL_ROWS || 5) - li;
+      // percent for that layer (bottom->top)
+      var percent = parseFloat(document.querySelector(`.percentage-input[data-row="${rowIndex}"][data-mill="${bi}"]`)?.value) || 0;
+
+      // try to fetch cell-level coal/gcv/cost/color if present
+      var coalId = getCellCoalId(rowIndex, bi) || (document.getElementById('coalName' + rowIndex)?.value || '');
+      var coalObj = findCoalInDB(coalId);
+      var coalName = coalObj ? (coalObj.coal || coalObj.name || '') : (coalId || '');
+      var gcv = getCellGcv(rowIndex, bi) || undefined;
+      var cost = getCellCost(rowIndex, bi) || undefined;
+      var color = (coalObj && coalObj.color) ? coalObj.color : ( (coalColorMap && coalColorMap[coalId]) ? coalColorMap[coalId] : undefined );
+
+      layers.push({
+        rowIndex: Number(rowIndex),
+        coal: coalName,
+        percent: Number(percent || 0),
+        gcv: (gcv === 0 ? 0 : (gcv || undefined)),
+        cost: (cost === 0 ? 0 : (cost || undefined)),
+        color: color || undefined,
+        timer: secondsToHHMMSS(seconds),
+        rawSeconds: (isFinite(seconds) ? Math.round(seconds) : null)
+      });
+    }
+    clientBunkers.push({ layers: layers });
+  }
 
   return {
     rows: rows,
@@ -152,11 +190,11 @@ function collectFormData(){
     ts: Date.now(),
     bunkerCapacity: bunkerCapacity,
     bunkerCapacities: bunkerCapacities,
-    // NEW: send persistent colour map to server so server can store colours with bunkers
-    coalColorMap: coalColorMap
+    coalColorMap: coalColorMap,
+    clientBunkers: clientBunkers   // <-- NEW
   };
-
 }
+
 
 
 /* fetch latest blend id and save/put (same as before) */
@@ -238,6 +276,9 @@ async function loadCoalListAndPopulate(){
   if(typeof calculateBlended === 'function') calculateBlended();
 }
 
+
+
+
 /* wire up onload */
 window.addEventListener('load', function(){
   loadCoalListAndPopulate().catch(e => console.error('[coal-helper] populate error', e));
@@ -249,3 +290,7 @@ window.addEventListener('load', function(){
 /* Example: in your UI when user picks coal for bunker 2 (mill=1) for row 3 call setCellCoal(3,1,'<coal-id>') */
 
 /* (other UI helpers such as updateBunkerColors / calculateBlended / tooltip code live in input.html and still work with this input.js) */
+
+
+
+
