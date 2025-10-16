@@ -80,7 +80,11 @@ const BlendSchema = new mongoose.Schema({
       percent: Number,
       gcv: Number,
       cost: Number,
-      color: String    // <- persist the colour hex (e.g. "#aabbcc")
+      color: String,    // <- persist the colour hex (e.g. "#aabbcc")
+      timer: {
+    type: String,
+    default: '00:00:00', // format: HH:MM:SS
+  },
     }]
   }],
 
@@ -609,7 +613,43 @@ app.post('/api/blend', async (req, res) => {
 
     // compute metrics including bunkers
     // compute metrics including bunkers (pass client-sent coalColorMap)
+// const metrics = await computeBlendMetrics(rowsToSave, flows, generation, (req.body && req.body.coalColorMap) ? req.body.coalColorMap : {});
+// --- merge client-sent timers into computed metrics.bunkers (if provided) ---
+function mergeClientTimersIntoMetrics(metricsBunkers, clientBunkers) {
+  if (!Array.isArray(metricsBunkers) || !Array.isArray(clientBunkers)) return;
+  for (let bi = 0; bi < Math.min(metricsBunkers.length, clientBunkers.length); bi++) {
+    const mB = metricsBunkers[bi];
+    const cB = clientBunkers[bi];
+    if (!mB || !Array.isArray(mB.layers) || !cB || !Array.isArray(cB.layers)) continue;
+    // build map by rowIndex for client layers
+    const clientMap = {};
+    cB.layers.forEach(l => {
+      if (l && l.rowIndex !== undefined) clientMap[Number(l.rowIndex)] = l;
+    });
+    // apply timers to metric layers by matching rowIndex
+    mB.layers.forEach(layer => {
+      if (!layer || layer.rowIndex === undefined) return;
+      const key = Number(layer.rowIndex);
+      if (clientMap[key] && clientMap[key].timer) {
+        layer.timer = clientMap[key].timer;
+      }
+      // optionally accept rawSeconds too if client sent it
+      else if (clientMap[key] && clientMap[key].rawSeconds != null && isFinite(clientMap[key].rawSeconds)) {
+        const s = Math.max(0, Math.round(clientMap[key].rawSeconds));
+        const hh = String(Math.floor(s/3600)).padStart(2,'0');
+        const mm = String(Math.floor((s%3600)/60)).padStart(2,'0');
+        const ss = String(s % 60).padStart(2,'0');
+        layer.timer = `${hh}:${mm}:${ss}`;
+      }
+    });
+  }
+}
 const metrics = await computeBlendMetrics(rowsToSave, flows, generation, (req.body && req.body.coalColorMap) ? req.body.coalColorMap : {});
+
+// merge timers if client posted them
+if (req.body && Array.isArray(req.body.clientBunkers)) {
+  mergeClientTimersIntoMetrics(metrics.bunkers, req.body.clientBunkers);
+}
 
 
     // create and save blend - include bunkers from metrics
@@ -678,7 +718,43 @@ const { rows, flows, generation, bunkerCapacity, bunkerCapacities } = req.body;
     }
 
     const rowsToSave = (rows || []).map(row => resolveRowCoalField(row));
-    const metrics = await computeBlendMetrics(rowsToSave, flows, generation, (req.body && req.body.coalColorMap) ? req.body.coalColorMap : {});
+    // const metrics = await computeBlendMetrics(rowsToSave, flows, generation, (req.body && req.body.coalColorMap) ? req.body.coalColorMap : {});
+// --- merge client-sent timers into computed metrics.bunkers (if provided) ---
+function mergeClientTimersIntoMetrics(metricsBunkers, clientBunkers) {
+  if (!Array.isArray(metricsBunkers) || !Array.isArray(clientBunkers)) return;
+  for (let bi = 0; bi < Math.min(metricsBunkers.length, clientBunkers.length); bi++) {
+    const mB = metricsBunkers[bi];
+    const cB = clientBunkers[bi];
+    if (!mB || !Array.isArray(mB.layers) || !cB || !Array.isArray(cB.layers)) continue;
+    // build map by rowIndex for client layers
+    const clientMap = {};
+    cB.layers.forEach(l => {
+      if (l && l.rowIndex !== undefined) clientMap[Number(l.rowIndex)] = l;
+    });
+    // apply timers to metric layers by matching rowIndex
+    mB.layers.forEach(layer => {
+      if (!layer || layer.rowIndex === undefined) return;
+      const key = Number(layer.rowIndex);
+      if (clientMap[key] && clientMap[key].timer) {
+        layer.timer = clientMap[key].timer;
+      }
+      // optionally accept rawSeconds too if client sent it
+      else if (clientMap[key] && clientMap[key].rawSeconds != null && isFinite(clientMap[key].rawSeconds)) {
+        const s = Math.max(0, Math.round(clientMap[key].rawSeconds));
+        const hh = String(Math.floor(s/3600)).padStart(2,'0');
+        const mm = String(Math.floor((s%3600)/60)).padStart(2,'0');
+        const ss = String(s % 60).padStart(2,'0');
+        layer.timer = `${hh}:${mm}:${ss}`;
+      }
+    });
+  }
+}
+const metrics = await computeBlendMetrics(rowsToSave, flows, generation, (req.body && req.body.coalColorMap) ? req.body.coalColorMap : {});
+
+// merge timers if client posted them
+if (req.body && Array.isArray(req.body.clientBunkers)) {
+  mergeClientTimersIntoMetrics(metrics.bunkers, req.body.clientBunkers);
+}
 
 
 const updated = await Blend.findByIdAndUpdate(
@@ -733,4 +809,3 @@ app.listen(PORT, () => console.log(`Server listening on ${PORT}`));
 //the file that i have shared are basically 3 files these are the files for my website in this website i am already 
 //impkementing the logic of submitting data to the database now similarly for a specific coal that i am submiting i want that 
 //the specific coal colour should also get submitted to the database so that
-
