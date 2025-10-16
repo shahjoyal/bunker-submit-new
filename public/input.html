@@ -405,7 +405,7 @@ html, body {
 /* final safety: ensure no body scrollbars */
 html, body { overflow: hidden; }
 </style>
-    <script>
+  <script>
      if(localStorage.getItem('isLoggedIn') !== 'true') {
     alert('You must login first!');
     window.location.href = '/public/login.html'; 
@@ -765,12 +765,17 @@ window.NUM_COAL_ROWS = window.NUM_COAL_ROWS || 5;
 /* ---------- coal color persistence with unique assignments ---------- */
 /* ---------- palette (40 colors) and simplified mapping logic ---------- */
 const DEFAULT_COAL_COLORS = [
-  "#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f",
-  "#bcbd22","#17becf","#393b79","#5254a3","#6b6ecf","#9c9ede","#637939","#8ca252",
-  "#b5cf6b","#cedb9c","#8c6d31","#bd9e39","#e7ba52","#e377c2","#7b4173","#a55194",
-  "#ce6dbd","#de9ed6","#1b9e77","#d95f02","#7570b3","#e7298a","#66a61e","#e6ab02",
-  "#a6761d","#666666","#a6cee3","#1f78b4","#b2df8a","#33a02c","#fb9a99","#fdbf6f"
+  "#000000", "#FFFFFF", "#FF0000", "#00FF00", "#0000FF",
+  "#FFFF00", "#00FFFF", "#FF00FF", "#FFA500", "#800080",
+  "#008000", "#808000", "#008080", "#800000", "#A52A2A",
+  "#FF4500", "#2E8B57", "#4682B4", "#DA70D6", "#40E0D0",
+  "#B22222", "#FFD700", "#ADFF2F", "#DC143C", "#7FFF00",
+  "#6495ED", "#FF1493", "#20B2AA", "#FF6347", "#9932CC",
+  "#00CED1", "#FF69B4", "#556B2F", "#1E90FF", "#B8860B",
+  "#32CD32", "#C71585", "#708090", "#F4A460", "#00BFFF"
 ];
+
+
 const COAL_COLOR_MAP_KEY = '__coalColorMap_v2'; // bump key to avoid old maps during testing
 
 function readCoalColorMap(){
@@ -1221,6 +1226,7 @@ function updateNextBlendDisplay(b, seconds){
   if(!isFinite(seconds) || seconds <= 0){ el.value = '--'; el.dataset.seconds = 0; return; }
   el.value = formatHMS(seconds);
   el.dataset.seconds = Math.max(0, Math.floor(seconds));
+  //console.log(el)
 }
 
 function getSingleBunkerCapacity(){
@@ -3320,4 +3326,3 @@ function attachToRects(){
 </script>
 </body>
 </html>
-
